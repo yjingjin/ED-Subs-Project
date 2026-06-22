@@ -1,0 +1,25 @@
+# Central configuration for the ED Subs pipeline.
+# Schema/table names are placeholders — confirm the writable scratch catalog name and
+# finalize table lists once details are provided.
+
+catalog: scratch          # cannot create a top-level catalog; use schemas within the scratch catalog
+
+schemas:
+  bronze: ed_bronze       # raw CSV uploads, 1:1 with source (ED-filtered at export)
+  silver: ed_silver       # cleaned, typed, deduped, conformed keys
+  gold: ed_gold           # model-ready feature tables + churn label
+
+paths:
+  export_dir: data/exports   # local CSVs exported from DataGrip (gitignored)
+
+# Source tables to export from Redshift (DataGrip → CSV → bronze).
+# Fill in the actual tables per schema. Start small.
+source_tables:
+  goodrx: []
+  goodrx_raw: []
+  edr: []
+  claim: []
+
+# Churn label definition — to be defined later.
+churn:
+  definition: TBD
