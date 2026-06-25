@@ -1,7 +1,12 @@
 # Databricks notebook source
 # Load CSVs from the Databricks Volume into bronze Delta tables in general_scratch.
-# Uses explicit schemas per table so all columns have correct types from the start.
-# Run this notebook once per ingestion (re-run is safe: uses overwrite mode).
+#
+# Strategy: read all columns as raw strings first, then cast explicitly per column.
+# This is more robust than supplying a schema upfront — Spark's cast() handles mixed
+# timestamp formats (with/without timezone offset) and boolean strings cleanly.
+# Null counts are printed after each table so you can spot any remaining parse issues.
+#
+# Re-run is safe: uses overwrite mode.
 
 # COMMAND ----------
 
@@ -10,320 +15,214 @@ SCHEMA        = "general_scratch"
 BRONZE_PREFIX = "ed_bronze_"
 VOLUME_BASE   = "/Volumes/general_scratch_catalog/general_scratch/checkpoints/jiny/ed_subs_raw_uploads"
 
-# COMMAND ----------
-
-from pyspark.sql.types import (
-    StructType, StructField,
-    StringType, BooleanType, IntegerType,
-    DecimalType, TimestampType,
-)
-
-T   = TimestampType()
-STR = StringType()
-INT = IntegerType()
-BOL = BooleanType()
-DEC = DecimalType(18, 2)
-
-# ---------- per-table schemas ----------
-
-SCHEMAS = {}
-
-SCHEMAS["subscriptions"] = StructType([
-    StructField("subscription_id",                  STR),
-    StructField("created_at",                       T),
-    StructField("common_id",                        STR),
-    StructField("status",                           STR),
-    StructField("raw_subscription_type",            STR),
-    StructField("condition_id",                     INT),
-    StructField("tenant_id",                        STR),
-    StructField("current_term_end",                 T),
-    StructField("latest_delinquent_at",             T),
-    StructField("latest_canceled_at",               T),
-    StructField("latest_paused_at",                 T),
-    StructField("latest_stripe_sub_id",             STR),
-    StructField("trial_duration",                   INT),
-    StructField("had_trial",                        BOL),
-    StructField("current_price",                    DEC),
-    StructField("current_drug_id",                  INT),
-    StructField("current_regimen",                  STR),
-    StructField("current_quantity",                 INT),
-    StructField("current_fulfillment_method",       STR),
-    StructField("current_days_supply",              INT),
-    StructField("desired_refill_count",             INT),
-    StructField("current_benefits_package",         STR),
-    StructField("current_variant",                  STR),
-    StructField("activated_backend_at",             T),
-    StructField("paid_at",                          T),
-    StructField("rx_written_at",                    T),
-    StructField("is_paid",                          BOL),
-    StructField("rx_is_written",                    BOL),
-    StructField("is_activated_backend",             BOL),
-    StructField("is_trial_converted",               BOL),
-    StructField("trial_converted_at",               T),
-    StructField("trial_is_ended",                   BOL),
-    StructField("trial_ended_at",                   T),
-    StructField("is_manual_trial_canceled",         BOL),
-    StructField("is_failed_payment_trial_canceled", BOL),
-    StructField("is_trial_canceled",                BOL),
-    StructField("_kafka_updated_ts",                T),
-    StructField("subscription_category",            STR),
-    StructField("tenant_name",                      STR),
-    StructField("subscription_subcategory",         STR),
-    StructField("subscription_name",                STR),
-    StructField("condition_name",                   STR),
-    StructField("is_activated",                     BOL),
-    StructField("activated_at",                     T),
-    StructField("trial_conversion_expected_at",     T),
-    StructField("user_subscription_number",         INT),
-    StructField("first_platform",                   STR),
-    StructField("first_session_id",                 STR),
-    StructField("first_grx_unique_id",              STR),
-    StructField("first_channel_grouping",           STR),
-    StructField("first_channel_subgrouping",        STR),
-    StructField("first_traffic_source",             STR),
-    StructField("first_campaign",                   STR),
-    StructField("user_state",                       STR),
-    StructField("_updated_ts",                      T),
-])
-
-SCHEMAS["subscription_terms"] = StructType([
-    StructField("common_id",                        STR),
-    StructField("subscription_category",            STR),
-    StructField("subscription_subcategory",         STR),
-    StructField("subscription_name",                STR),
-    StructField("condition_name",                   STR),
-    StructField("condition_id",                     INT),
-    StructField("_sub_activated_at",                T),
-    StructField("subscription_id",                  STR),
-    StructField("term_started_at",                  T),
-    StructField("subscription_term_id",             STR),
-    StructField("term_number",                      INT),
-    StructField("next_term_started_at",             T),
-    StructField("is_new_start",                     BOL),
-    StructField("had_trial",                        BOL),
-    StructField("is_trial_converted",               BOL),
-    StructField("trial_converted_at",               T),
-    StructField("trial_is_ended",                   BOL),
-    StructField("trial_ended_at",                   T),
-    StructField("trial_conversion_expected_at",     T),
-    StructField("is_trial_canceled",                BOL),
-    StructField("is_manual_trial_canceled",         BOL),
-    StructField("is_failed_payment_trial_canceled", BOL),
-    StructField("_status",                          STR),
-    StructField("term_status",                      STR),
-    StructField("first_plan_id",                    STR),
-    StructField("latest_plan_id",                   STR),
-    StructField("first_active_visit_id",            STR),
-    StructField("cancel_requested_at",              T),
-    StructField("cancel_expected_at",               T),
-    StructField("cancel_reason",                    STR),
-    StructField("term_ended_at",                    T),
-    StructField("termination_type",                 STR),
-    StructField("term_active_until",                T),
-    StructField("is_paid",                          BOL),
-    StructField("paid_at",                          T),
-    StructField("_updated_ts",                      T),
-    StructField("is_delinquent",                    BOL),
-    StructField("is_failed_payment_canceled",       BOL),
-    StructField("trial_is_delinquent",              BOL),
-    StructField("refunded_at",                      T),
-    StructField("is_refunded",                      BOL),
-])
-
-SCHEMAS["subscription_plan_terms"] = StructType([
-    StructField("subscription_id",          STR),
-    StructField("common_id",                STR),
-    StructField("term_started_at",          T),
-    StructField("term_ended_at",            T),
-    StructField("term_status",              STR),
-    StructField("subscription_category",   STR),
-    StructField("subscription_subcategory",STR),
-    StructField("subscription_name",       STR),
-    StructField("condition_name",          STR),
-    StructField("condition_id",            INT),
-    StructField("subscription_term_id",    STR),
-    StructField("term_number",             INT),
-    StructField("subscription_plan_term_id", STR),
-    StructField("plan_term_started_at",    T),
-    StructField("plan_id",                 STR),
-    StructField("previous_plan_id",        STR),
-    StructField("starting_visit_id",       STR),
-    StructField("plan_name",               STR),
-    StructField("drug_id",                 INT),
-    StructField("drug_name",               STR),
-    StructField("drug_strength",           STR),
-    StructField("regimen",                 STR),
-    StructField("monthly_dose",            INT),
-    StructField("plan_variant",            STR),
-    StructField("term_months",             INT),
-    StructField("plan_term_number",        INT),
-    StructField("next_plan_term_started_at", T),
-    StructField("next_plan_term_plan_id",  STR),
-    StructField("is_latest_plan_term",     BOL),
-    StructField("plan_term_ended_at",      T),
-    StructField("plan_term_status",        STR),
-    StructField("starting_fulfillment_type", STR),
-])
-
-SCHEMAS["subscription_charges"] = StructType([
-    StructField("charge_id",               STR),
-    StructField("event_name",              STR),
-    StructField("invoice_id",              STR),
-    StructField("is_latest_charge",        BOL),
-    StructField("attempt_number",          INT),
-    StructField("subscription_id",         STR),
-    StructField("occurred_at",             T),
-    StructField("common_id",               STR),
-    StructField("activation_count",        INT),
-    StructField("order_id",                STR),
-    StructField("visit_id",                STR),
-    StructField("prescription_id",         STR),
-    StructField("plan_id",                 STR),
-    StructField("plan_name",               STR),
-    StructField("subscription_category",   STR),
-    StructField("subscription_name",       STR),
-    StructField("condition_name",          STR),
-    StructField("condition_id",            INT),
-    StructField("drug_id",                 INT),
-    StructField("drug_name",               STR),
-    StructField("failure_reason",          STR),
-    StructField("amount_due",              DEC),
-    StructField("payment_method_id",       STR),
-    StructField("current_term_end_at",     T),
-    StructField("sub_state_after_charge",  STR),
-    StructField("card_brand",              STR),
-    StructField("wallet_type",             STR),
-    StructField("is_refunded",             BOL),
-    StructField("refunded_at",             T),
-    StructField("is_failed",               BOL),
-    StructField("was_paid",                BOL),
-    StructField("is_paid",                 BOL),
-    StructField("status",                  STR),
-    StructField("gross_revenue",           DEC),
-    StructField("net_revenue",             DEC),
-])
-
-SCHEMAS["subscription_invoices"] = StructType([
-    StructField("invoice_id",                              STR),
-    StructField("created_at",                              T),
-    StructField("subscription_id",                         STR),
-    StructField("common_id",                               STR),
-    StructField("plan_id",                                 STR),
-    StructField("original_payment_method_id",              STR),
-    StructField("visit_id",                                STR),
-    StructField("prescription_id",                         STR),
-    StructField("invoice_number",                          INT),
-    StructField("card_type",                               STR),
-    StructField("was_paid",                                BOL),
-    StructField("was_failed",                              BOL),
-    StructField("is_paid",                                 BOL),
-    StructField("is_failed",                               BOL),
-    StructField("is_refunded",                             BOL),
-    StructField("invoice_status",                          STR),
-    StructField("activation_count",                        INT),
-    StructField("paid_at",                                 T),
-    StructField("failed_at",                               T),
-    StructField("first_charge_at",                         T),
-    StructField("refunded_at",                             T),
-    StructField("num_charges",                             INT),
-    StructField("latest_charge_at",                        T),
-    StructField("latest_term_end_at",                      T),
-    StructField("latest_charge_id",                        STR),
-    StructField("latest_order_id",                         STR),
-    StructField("latest_payment_method_id",                STR),
-    StructField("amount_due",                              DEC),
-    StructField("gross_revenue",                           DEC),
-    StructField("net_revenue",                             DEC),
-    StructField("is_delinquent",                           BOL),
-    StructField("caused_cancellation",                     BOL),
-    StructField("subscription_category",                   STR),
-    StructField("subscription_subcategory",                STR),
-    StructField("subscription_name",                       STR),
-    StructField("subscription_term_id",                    STR),
-    StructField("term_number",                             INT),
-    StructField("term_started_at",                         T),
-    StructField("term_ended_at",                           T),
-    StructField("is_trial_invoice",                        BOL),
-    StructField("is_trial_conversion_invoice",             BOL),
-    StructField("subscription_plan_term_id",               STR),
-    StructField("plan_term_started_at",                    T),
-    StructField("plan_term_ended_at",                      T),
-    StructField("drug_id",                                 INT),
-    StructField("drug_name",                               STR),
-    StructField("expected_term_end_at",                    T),
-    StructField("order_status",                            STR),
-    StructField("order_updated_at",                        T),
-    StructField("cancel_requested_at",                     T),
-    StructField("is_latest_term_invoice",                  BOL),
-    StructField("is_dup",                                  BOL),
-    StructField("days_between_invoice_and_fulfillment_status", INT),
-    StructField("next_invoice_number",                     INT),
-    StructField("expected_refill_dt",                      T),
-    StructField("next_invoice_creation_is_expected",       BOL),
-    StructField("next_invoice_created_at",                 T),
-    StructField("next_invoice_status",                     STR),
-])
-
-SCHEMAS["subscriptions_churn"] = StructType([
-    StructField("common_id",              STR),
-    StructField("subscription_id",        STR),
-    StructField("subscription_term_id",   STR),
-    StructField("term_number",            INT),
-    StructField("is_reactivated_term",    BOL),
-    StructField("subscription_category", STR),
-    StructField("subscription_name",      STR),
-    StructField("is_activated",           BOL),
-    StructField("term_started_at",        T),
-    StructField("term_ended_at",          T),
-    StructField("first_invoice_paid_dt",  T),
-    StructField("last_invoice_paid_dt",   T),
-    StructField("count_paid_invoices",    INT),
-    StructField("total_paid_amount",      DEC),
-    StructField("net_paid_amount",        DEC),
-    StructField("plan_name",              STR),
-    StructField("term_months",            INT),
-    StructField("cancel_requested_at",    T),
-    StructField("forecasted_churn_date",  T),
-    StructField("user_state",             STR),
-])
+TABLES = [
+    "subscriptions",
+    "subscription_terms",
+    "subscription_plan_terms",
+    "subscription_charges",
+    "subscription_invoices",
+    "subscriptions_churn",
+]
 
 # COMMAND ----------
+
+# Column type maps: table → {column: cast_type}
+# Columns not listed stay as StringType.
 
 from pyspark.sql import functions as F
+from pyspark.sql.types import DecimalType
 
-TABLES = [
-    ("subscriptions",           "subscriptions"),
-    ("subscription_terms",      "subscription_terms"),
-    ("subscription_plan_terms", "subscription_plan_terms"),
-    ("subscription_charges",    "subscription_charges"),
-    ("subscription_invoices",   "subscription_invoices"),
-    ("subscriptions_churn",     "subscriptions_churn"),
-]
+TS  = "timestamp"
+BOL = "boolean"
+INT = "integer"
+DEC = "decimal(18,2)"
+
+CASTS = {}
+
+CASTS["subscriptions"] = {
+    "created_at":                       TS,
+    "current_term_end":                 TS,
+    "latest_delinquent_at":             TS,
+    "latest_canceled_at":               TS,
+    "latest_paused_at":                 TS,
+    "activated_backend_at":             TS,
+    "paid_at":                          TS,
+    "rx_written_at":                    TS,
+    "activated_at":                     TS,
+    "trial_converted_at":               TS,
+    "trial_ended_at":                   TS,
+    "trial_conversion_expected_at":     TS,
+    "_kafka_updated_ts":                TS,
+    "_updated_ts":                      TS,
+    "condition_id":                     INT,
+    "trial_duration":                   INT,
+    "current_drug_id":                  INT,
+    "current_quantity":                 INT,
+    "current_days_supply":              INT,
+    "desired_refill_count":             INT,
+    "user_subscription_number":         INT,
+    "current_price":                    DEC,
+    "had_trial":                        BOL,
+    "is_paid":                          BOL,
+    "rx_is_written":                    BOL,
+    "is_activated_backend":             BOL,
+    "is_trial_converted":               BOL,
+    "trial_is_ended":                   BOL,
+    "is_manual_trial_canceled":         BOL,
+    "is_failed_payment_trial_canceled": BOL,
+    "is_trial_canceled":                BOL,
+    "is_activated":                     BOL,
+}
+
+CASTS["subscription_terms"] = {
+    "_sub_activated_at":                TS,
+    "term_started_at":                  TS,
+    "next_term_started_at":             TS,
+    "term_ended_at":                    TS,
+    "term_active_until":                TS,
+    "trial_converted_at":               TS,
+    "trial_ended_at":                   TS,
+    "trial_conversion_expected_at":     TS,
+    "cancel_requested_at":              TS,
+    "cancel_expected_at":               TS,
+    "paid_at":                          TS,
+    "refunded_at":                      TS,
+    "_updated_ts":                      TS,
+    "condition_id":                     INT,
+    "term_number":                      INT,
+    "is_new_start":                     BOL,
+    "had_trial":                        BOL,
+    "is_trial_converted":               BOL,
+    "trial_is_ended":                   BOL,
+    "is_trial_canceled":                BOL,
+    "is_manual_trial_canceled":         BOL,
+    "is_failed_payment_trial_canceled": BOL,
+    "is_paid":                          BOL,
+    "is_delinquent":                    BOL,
+    "is_failed_payment_canceled":       BOL,
+    "trial_is_delinquent":              BOL,
+    "is_refunded":                      BOL,
+}
+
+CASTS["subscription_plan_terms"] = {
+    "term_started_at":              TS,
+    "term_ended_at":                TS,
+    "plan_term_started_at":         TS,
+    "plan_term_ended_at":           TS,
+    "next_plan_term_started_at":    TS,
+    "condition_id":                 INT,
+    "term_number":                  INT,
+    "plan_term_number":             INT,
+    "drug_id":                      INT,
+    "monthly_dose":                 INT,
+    "term_months":                  INT,
+    "is_latest_plan_term":          BOL,
+}
+
+CASTS["subscription_charges"] = {
+    "occurred_at":          TS,
+    "current_term_end_at":  TS,
+    "refunded_at":          TS,
+    "condition_id":         INT,
+    "drug_id":              INT,
+    "attempt_number":       INT,
+    "activation_count":     INT,
+    "amount_due":           DEC,
+    "gross_revenue":        DEC,
+    "net_revenue":          DEC,
+    "is_latest_charge":     BOL,
+    "is_refunded":          BOL,
+    "is_failed":            BOL,
+    "was_paid":             BOL,
+    "is_paid":              BOL,
+}
+
+CASTS["subscription_invoices"] = {
+    "created_at":               TS,
+    "paid_at":                  TS,
+    "failed_at":                TS,
+    "first_charge_at":          TS,
+    "refunded_at":              TS,
+    "latest_charge_at":         TS,
+    "latest_term_end_at":       TS,
+    "term_started_at":          TS,
+    "term_ended_at":            TS,
+    "plan_term_started_at":     TS,
+    "plan_term_ended_at":       TS,
+    "expected_term_end_at":     TS,
+    "order_updated_at":         TS,
+    "cancel_requested_at":      TS,
+    "next_invoice_created_at":  TS,
+    "expected_refill_dt":       TS,
+    "invoice_number":           INT,
+    "activation_count":         INT,
+    "num_charges":              INT,
+    "term_number":              INT,
+    "drug_id":                  INT,
+    "next_invoice_number":      INT,
+    "days_between_invoice_and_fulfillment_status": INT,
+    "amount_due":               DEC,
+    "gross_revenue":            DEC,
+    "net_revenue":              DEC,
+    "was_paid":                 BOL,
+    "was_failed":               BOL,
+    "is_paid":                  BOL,
+    "is_failed":                BOL,
+    "is_refunded":              BOL,
+    "is_delinquent":            BOL,
+    "caused_cancellation":      BOL,
+    "is_trial_invoice":         BOL,
+    "is_trial_conversion_invoice": BOL,
+    "is_latest_term_invoice":   BOL,
+    "is_dup":                   BOL,
+    "next_invoice_creation_is_expected": BOL,
+}
+
+CASTS["subscriptions_churn"] = {
+    "term_started_at":        TS,
+    "term_ended_at":          TS,
+    "cancel_requested_at":    TS,
+    "forecasted_churn_date":  TS,
+    "first_invoice_paid_dt":  TS,
+    "last_invoice_paid_dt":   TS,
+    "term_number":            INT,
+    "term_months":            INT,
+    "count_paid_invoices":    INT,
+    "total_paid_amount":      DEC,
+    "net_paid_amount":        DEC,
+    "is_reactivated_term":    BOL,
+    "is_activated":           BOL,
+}
+
+# COMMAND ----------
 
 results = []
 
-for csv_stem, table_suffix in TABLES:
-    csv_path = f"{VOLUME_BASE}/{csv_stem}.csv"
-    target   = f"{CATALOG}.{SCHEMA}.{BRONZE_PREFIX}{table_suffix}"
+for table_name in TABLES:
+    csv_path = f"{VOLUME_BASE}/{table_name}.csv"
+    target   = f"{CATALOG}.{SCHEMA}.{BRONZE_PREFIX}{table_name}"
 
-    print(f"\n--- Loading {csv_path}")
-    print(f"        →  {target} ---")
+    print(f"\n--- {table_name} ---")
 
+    # Step 1: read everything as strings
     df = (
         spark.read
         .option("header", True)
         .option("multiLine", True)
         .option("escape", '"')
-        .option("timestampFormat", "yyyy-MM-dd HH:mm:ss.SSSSSS")
-        .schema(SCHEMAS[csv_stem])
         .csv(csv_path)
         .withColumn("_ingested_at",  F.current_timestamp())
         .withColumn("_source_file",  F.lit(csv_path))
-        .withColumn("_source_table", F.lit(f"goodrx_dbt.{csv_stem}"))
+        .withColumn("_source_table", F.lit(f"goodrx_dbt.{table_name}"))
     )
+
+    # Step 2: apply explicit casts — empty strings become null naturally
+    for col_name, cast_type in CASTS[table_name].items():
+        df = df.withColumn(col_name, F.col(col_name).cast(cast_type))
 
     row_count = df.count()
 
+    # Step 3: write to bronze
     (
         df.write
         .format("delta")
@@ -332,21 +231,24 @@ for csv_stem, table_suffix in TABLES:
         .saveAsTable(target)
     )
 
-    print(f"  Rows loaded : {row_count:,}")
-    results.append({"table": target, "rows": row_count})
+    # Step 4: null check on typed columns
+    typed_cols = list(CASTS[table_name].keys())
+    null_counts = (
+        df.select([F.count(F.when(F.col(c).isNull(), c)).alias(c) for c in typed_cols])
+        .collect()[0]
+        .asDict()
+    )
+    non_zero = {c: n for c, n in null_counts.items() if n > 0}
+
+    print(f"  Rows   : {row_count:,}")
+    print(f"  Nulls  : {non_zero if non_zero else 'none in typed columns'}")
+    results.append({"table": target, "rows": row_count, "nulls": non_zero})
 
 # COMMAND ----------
 
 print("\n=== Bronze ingestion complete ===")
-print(f"{'Table':<80} {'Rows':>10}")
-print("-" * 92)
+print(f"{'Table':<75} {'Rows':>8}  Columns with nulls")
+print("-" * 110)
 for r in results:
-    print(f"{r['table']:<80} {r['rows']:>10,}")
-
-# COMMAND ----------
-
-# Spot-check schemas to confirm types landed correctly.
-for _, table_suffix in TABLES:
-    target = f"{CATALOG}.{SCHEMA}.{BRONZE_PREFIX}{table_suffix}"
-    print(f"\n--- {target} ---")
-    spark.table(target).printSchema()
+    nulls = ", ".join(f"{c}={n}" for c, n in r["nulls"].items()) or "—"
+    print(f"{r['table']:<75} {r['rows']:>8,}  {nulls}")
