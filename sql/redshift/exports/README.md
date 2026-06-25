@@ -16,5 +16,5 @@ Databricks scratch catalog, then loaded into `ed_bronze`.
 ## Naming
 
 ```
-sql/redshift/exports/<schema>/<table>.sql   ->   CSV   ->   <scratch>.ed_bronze.<table>
+sql/redshift/exports/<schema>/<table_pull_date>.sql   ->   CSV   ->   <scratch>.ed_bronze.<table>
 ```

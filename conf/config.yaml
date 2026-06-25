@@ -1,24 +1,33 @@
 # Central configuration for the ED Subs pipeline.
-# Schema/table names are placeholders — confirm the writable scratch catalog name and
-# finalize table lists once details are provided.
 
-catalog: scratch          # cannot create a top-level catalog; use schemas within the scratch catalog
+catalog: general_scratch_catalog   # Unity Catalog: cannot create a new top-level catalog
 
-schemas:
-  bronze: ed_bronze       # raw CSV uploads, 1:1 with source (ED-filtered at export)
-  silver: ed_silver       # cleaned, typed, deduped, conformed keys
-  gold: ed_gold           # model-ready feature tables + churn label
+# Cannot create new schemas — all tables live in general_scratch.
+# Medallion layers are distinguished by table name prefixes:
+#   ed_bronze_<table>, ed_silver_<table>, ed_gold_<table>
+schema: general_scratch
+
+table_prefixes:
+  bronze: ed_bronze_
+  silver: ed_silver_
+  gold: ed_gold_
 
 paths:
   export_dir: data/exports   # local CSVs exported from DataGrip (gitignored)
+  # Volume path for raw CSV uploads in Databricks.
+  # CSVs land here first; csv_to_bronze.py reads from here into ed_bronze Delta tables.
+  volume_upload_dir: /Volumes/general_scratch_catalog/general_scratch/checkpoints/jiny/ed_subs_raw_uploads
 
-# Source tables to export from Redshift (DataGrip → CSV → bronze).
-# Fill in the actual tables per schema. Start small.
+# Source tables exported from Redshift (DataGrip → CSV → bronze).
+# Schema: goodrx_dbt
 source_tables:
-  goodrx: []
-  goodrx_raw: []
-  edr: []
-  claim: []
+  goodrx_dbt:
+    - subscriptions
+    - subscription_terms
+    - subscription_plan_terms
+    - subscription_charges
+    - subscription_invoices
+    - subscriptions_churn
 
 # Churn label definition — to be defined later.
 churn:
