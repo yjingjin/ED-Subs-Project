@@ -19,6 +19,7 @@ TABLES = [
     "subscriptions",
     "subscription_terms",
     "subscription_plan_terms",
+    "subscription_plan_types",
     "subscription_charges",
     "subscription_invoices",
     "subscriptions_churn",
@@ -117,6 +118,24 @@ CASTS["subscription_plan_terms"] = {
     "monthly_dose":                 INT,
     "term_months":                  INT,
     "is_latest_plan_term":          BOL,
+}
+
+CASTS["subscription_plan_types"] = {
+    "created_at":               TS,
+    "updated_at":               TS,
+    "_fivetran_synced":         TS,
+    "condition_id":             INT,
+    "drug_id":                  INT,
+    "monthly_dose":             INT,
+    "quantity_per_fill":        INT,
+    "desired_refill_count":     INT,
+    "billing_duration_count":   INT,
+    "days_supply_per_fill":     INT,
+    "term_months":              INT,
+    "prescription_price":       DEC,
+    "billing_price":            DEC,
+    "term_price":               DEC,
+    "_fivetran_deleted":        BOL,
 }
 
 CASTS["subscription_charges"] = {

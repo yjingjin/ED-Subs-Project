@@ -188,3 +188,42 @@ Pre-aggregated churn view. One row per subscription term with payment summary an
 | cancel_requested_at | timestamp | When cancellation was requested |
 | forecasted_churn_date | timestamp | Model-forecasted churn date |
 | user_state | string | US state |
+
+---
+
+## subscription_plan_types
+
+Reference table for plan definitions — one row per plan. Maps `plan_id` to drug, dosing, pricing, and term details.
+
+| Column | Type | Description |
+|---|---|---|
+| plan_id | string | Primary key |
+| subscription_type | string | e.g. `CONDITION` |
+| tenant_id | string | e.g. `gdrx` |
+| display_name | string | Human-readable plan name |
+| tags | string | JSON array of tags (e.g. `BEST_VALUE`) |
+| created_at | timestamp | When the plan was created |
+| updated_at | timestamp | Last update timestamp |
+| condition_id | int | 135 = erectile dysfunction |
+| condition_name | string | e.g. `Erectile Dysfunction` |
+| drug_id | int | Drug identifier |
+| drug_name | string | e.g. `tadalafil (cialis)`, `sildenafil` |
+| drug_strength | string | e.g. `20mg`, `2.5mg` |
+| regimen | string | `AS_NEEDED` or `DAILY` |
+| monthly_dose | int | Doses per month |
+| variant | string | Plan variant code |
+| term_months | int | Term length in months |
+| term_price | decimal | Price for the full term |
+| billing_price | decimal | Billed amount |
+| prescription_price | decimal | Prescription price |
+| quantity_per_fill | int | Quantity dispensed per fill |
+| desired_refill_count | int | Expected number of refills |
+| billing_duration_count | int | Number of billing periods |
+| days_supply_per_fill | int | Days supply per fill |
+| fulfillment_method | string | e.g. `delivery` |
+| default_store_id | string | Default pharmacy/store |
+| stripe_price_id | string | Stripe price identifier |
+| plan_generation_id | string | Plan generation group |
+| display_image_uri | string | Image URL for the plan |
+| _fivetran_deleted | boolean | Soft-delete flag from Fivetran sync |
+| _fivetran_synced | timestamp | Last Fivetran sync timestamp |
