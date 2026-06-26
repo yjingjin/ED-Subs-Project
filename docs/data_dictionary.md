@@ -54,14 +54,15 @@ One row per billing term (renewal period) within a subscription.
 | common_id | string | Cross-table join key |
 | term_number | int | 1 = first term, 2 = first renewal, … |
 | term_started_at | timestamp | Term start |
-| term_ended_at | timestamp | Term end (null if active) |
+| term_ended_at | timestamp | Timestamp of subscription termination. NULL if the term is still active |
+| term_active_until | timestamp | Timestamp of the date that the term is active until |
 | next_term_started_at | timestamp | Start of the next renewal |
 | term_status | string | `active`, `canceled`, `paused`, … |
 | termination_type | string | How the term ended |
 | is_new_start | bool | True for the first term of the subscription |
 | is_paid | bool | Whether this term was paid |
-| is_delinquent | bool | Whether this term went delinquent |
-| is_failed_payment_canceled | bool | Canceled due to failed payment |
+| is_delinquent | bool | The latest charge on the latest term invoice failed, but the subscription was still left active after that failed charge |
+| is_failed_payment_canceled | bool | The latest charge on the latest term invoice failed and that failure caused the subscription to be paused or canceled |
 | cancel_requested_at | timestamp | When cancellation was requested |
 | cancel_reason | string | Cancellation reason |
 | _updated_ts | timestamp | Last update timestamp |
