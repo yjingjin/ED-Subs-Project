@@ -120,7 +120,7 @@ print(f"Silver : {S}*")
 # MAGIC     terms.term_started_at,
 # MAGIC     terms.term_ended_at,
 # MAGIC     terms.term_active_until,
-# MAGIC     DATEDIFF(DAY, terms.term_started_at::date, terms.term_ended_at::date) AS days_between_subscription_start_and_end,
+# MAGIC     DATEDIFF(DAY, terms.term_started_at::date, terms.term_ended_at::date) AS days_between_term_start_and_end,
 # MAGIC     terms.term_status,
 # MAGIC     terms.termination_type,
 # MAGIC     terms.is_new_start,
