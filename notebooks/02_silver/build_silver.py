@@ -252,9 +252,9 @@ silver_tables = [
     "subscriptions",
     "subscription_terms",
     "subscription_plan_terms",
-    "subscription_charges",
+    # "subscription_charges",
     "subscription_invoices",
-    "subscriptions_churn",
+    # "subscriptions_churn",
 ]
 
 print(f"\n{'Table':<70} {'Rows':>10}")
