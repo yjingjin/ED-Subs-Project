@@ -103,6 +103,7 @@ print(f"Silver : {S}*")
 # MAGIC     SELECT subscription_id
 # MAGIC     FROM general_scratch_catalog.general_scratch.ed_silver_subscriptions_qualified
 # MAGIC )
+# MAGIC ORDER BY subs_activated_at
 
 # COMMAND ----------
 
@@ -136,6 +137,7 @@ print(f"Silver : {S}*")
 # MAGIC     SELECT subscription_id
 # MAGIC     FROM general_scratch_catalog.general_scratch.ed_silver_subscriptions_qualified
 # MAGIC )
+# MAGIC ORDER BY terms.subscription_id, terms.term_started_at
 
 # COMMAND ----------
 
@@ -174,6 +176,7 @@ print(f"Silver : {S}*")
 # MAGIC     SELECT subscription_id
 # MAGIC     FROM general_scratch_catalog.general_scratch.ed_silver_subscriptions_qualified
 # MAGIC )
+# MAGIC ORDER BY plan_terms.subscription_id, plan_terms.plan_term_started_at
 
 # COMMAND ----------
 
@@ -237,6 +240,7 @@ print(f"Silver : {S}*")
 # MAGIC     SELECT subscription_id
 # MAGIC     FROM general_scratch_catalog.general_scratch.ed_silver_subscriptions_qualified
 # MAGIC )
+# MAGIC ORDER BY invoices.subscription_id, invoices.created_at
 
 # COMMAND ----------
 
