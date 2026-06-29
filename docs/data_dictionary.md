@@ -9,6 +9,10 @@ All tables are ED-filtered at export (condition_id = 135 / subscription_name LIK
 
 Core subscription record. One row per subscription.
 
+> **Bronze filter applied at export (06/22/2026):**
+> `condition_name = 'erectile dysfunction' AND is_paid IS TRUE AND is_activated IS TRUE`
+> Source query: `sql/redshift/exports/goodrx_dbt/subscriptions_06222026.sql`
+
 | Column | Type | Description |
 |---|---|---|
 | subscription_id | string (UUID) | Primary key |
