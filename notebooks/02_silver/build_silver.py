@@ -19,6 +19,7 @@ print(f"Bronze : {B}*")
 print(f"Silver : {S}*")
 
 # COMMAND ----------
+
 # MAGIC %md ## 1. subscriptions_qualified (cohort — run first)
 
 # COMMAND ----------
@@ -66,6 +67,7 @@ print(f"Silver : {S}*")
 # MAGIC WHERE first_period_end_dt::date <= '2026-05-15'
 
 # COMMAND ----------
+
 # MAGIC %md ## 2. subscription_plan_types (reference table)
 
 # COMMAND ----------
@@ -75,6 +77,7 @@ print(f"Silver : {S}*")
 # MAGIC SELECT * FROM `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscription_plan_types`
 
 # COMMAND ----------
+
 # MAGIC %md ## 3. subscriptions
 
 # COMMAND ----------
@@ -102,6 +105,7 @@ print(f"Silver : {S}*")
 # MAGIC )
 
 # COMMAND ----------
+
 # MAGIC %md ## 4. subscription_terms
 
 # COMMAND ----------
@@ -134,6 +138,7 @@ print(f"Silver : {S}*")
 # MAGIC )
 
 # COMMAND ----------
+
 # MAGIC %md ## 5. subscription_plan_terms
 
 # COMMAND ----------
@@ -171,6 +176,7 @@ print(f"Silver : {S}*")
 # MAGIC )
 
 # COMMAND ----------
+
 # MAGIC %md ## 6. subscription_charges
 
 # COMMAND ----------
@@ -183,6 +189,7 @@ print(f"Silver : {S}*")
 # MAGIC -- SELECT ...
 
 # COMMAND ----------
+
 # MAGIC %md ## 7. subscription_invoices
 
 # COMMAND ----------
@@ -232,6 +239,7 @@ print(f"Silver : {S}*")
 # MAGIC )
 
 # COMMAND ----------
+
 # MAGIC %md ## 8. subscriptions_churn
 
 # COMMAND ----------
@@ -242,6 +250,11 @@ print(f"Silver : {S}*")
 # MAGIC --   WHERE subscription_id IN (SELECT subscription_id FROM general_scratch_catalog.general_scratch.ed_silver_subscriptions_qualified)
 # MAGIC -- CREATE OR REPLACE TABLE general_scratch_catalog.general_scratch.ed_silver_subscriptions_churn AS
 # MAGIC -- SELECT ...
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Summary
 
 # COMMAND ----------
 
