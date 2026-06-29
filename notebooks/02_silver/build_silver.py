@@ -308,7 +308,76 @@ print(f"Silver : {S}*")
 
 # COMMAND ----------
 
-# MAGIC %md ## 9. subscriptions_churn
+# MAGIC %md ## 9. subscription_labels (churn label)
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC -- Churn label per qualified subscriber based on current period.
+# MAGIC -- is_churned = 0 (retained): new paid invoice OR new active term within 30 days after current period end.
+# MAGIC -- is_churned = 1 (churned): no renewal within 30 days.
+# MAGIC CREATE OR REPLACE TABLE general_scratch_catalog.general_scratch.ed_silver_subscription_labels AS
+# MAGIC
+# MAGIC WITH renew AS (
+# MAGIC     SELECT
+# MAGIC         cp.subscription_id,
+# MAGIC         MIN(inv.created_at)::date AS next_paid_invoice_created_at
+# MAGIC     FROM general_scratch_catalog.general_scratch.ed_silver_current_periods cp
+# MAGIC     JOIN general_scratch_catalog.general_scratch.ed_silver_subscription_invoices inv
+# MAGIC       ON cp.subscription_id = inv.subscription_id
+# MAGIC      AND cp.subscription_term_id = inv.subscription_term_id
+# MAGIC      AND inv.is_paid = TRUE
+# MAGIC      AND inv.invoice_id <> cp.invoice_id
+# MAGIC      AND inv.created_at::date >= cp.current_period_end_dt
+# MAGIC      AND inv.created_at::date <= cp.renewal_window_end_dt
+# MAGIC     GROUP BY 1
+# MAGIC ),
+# MAGIC
+# MAGIC reactivation AS (
+# MAGIC     SELECT
+# MAGIC         cp.subscription_id,
+# MAGIC         MIN(t.term_started_at)::date AS next_active_term_started_at
+# MAGIC     FROM general_scratch_catalog.general_scratch.ed_silver_current_periods cp
+# MAGIC     JOIN general_scratch_catalog.general_scratch.ed_silver_subscription_terms t
+# MAGIC       ON cp.subscription_id = t.subscription_id
+# MAGIC      AND t.subscription_term_id <> cp.subscription_term_id
+# MAGIC      AND t.term_started_at::date >= cp.current_period_end_dt
+# MAGIC      AND t.term_started_at::date <= cp.renewal_window_end_dt
+# MAGIC     GROUP BY 1
+# MAGIC )
+# MAGIC
+# MAGIC SELECT
+# MAGIC     cp.subscription_id,
+# MAGIC     cp.subscription_term_id,
+# MAGIC     cp.invoice_id,
+# MAGIC     cp.current_period_start_at,
+# MAGIC     cp.current_period_end_dt,
+# MAGIC     cp.renewal_window_end_dt,
+# MAGIC     npi.next_paid_invoice_created_at AS auto_renew_dt,
+# MAGIC     nat.next_active_term_started_at AS reactivation_dt,
+# MAGIC     CASE WHEN npi.subscription_id IS NOT NULL THEN TRUE ELSE FALSE END
+# MAGIC         AS is_auto_renewed,
+# MAGIC     CASE WHEN nat.subscription_id IS NOT NULL THEN TRUE ELSE FALSE END
+# MAGIC         AS is_reactivated,
+# MAGIC     CASE
+# MAGIC         WHEN npi.subscription_id IS NOT NULL
+# MAGIC           OR nat.subscription_id IS NOT NULL
+# MAGIC         THEN 0 ELSE 1
+# MAGIC     END AS churn_label,
+# MAGIC     CASE
+# MAGIC         WHEN npi.subscription_id IS NOT NULL
+# MAGIC           OR nat.subscription_id IS NOT NULL
+# MAGIC         THEN 'retained' ELSE 'churned'
+# MAGIC     END AS churn_status
+# MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_current_periods cp
+# MAGIC LEFT JOIN renew npi
+# MAGIC   ON cp.subscription_id = npi.subscription_id
+# MAGIC LEFT JOIN reactivation nat
+# MAGIC   ON cp.subscription_id = nat.subscription_id
+
+# COMMAND ----------
+
+# MAGIC %md ## 10. subscriptions_churn
 
 # COMMAND ----------
 
@@ -336,6 +405,7 @@ silver_tables = [
     # "subscription_charges",
     "subscription_invoices",
     "current_periods",
+    "subscription_labels",
     # "subscriptions_churn",
 ]
 
