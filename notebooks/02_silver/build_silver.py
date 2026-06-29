@@ -244,7 +244,71 @@ print(f"Silver : {S}*")
 
 # COMMAND ----------
 
-# MAGIC %md ## 8. subscriptions_churn
+# MAGIC %md ## 8. current_periods
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC -- Current period per subscriber: most recent paid, non-dup period ending on or before 2026-05-15.
+# MAGIC -- Used as the observation point for churn labeling.
+# MAGIC CREATE OR REPLACE TABLE general_scratch_catalog.general_scratch.ed_silver_current_periods AS
+# MAGIC SELECT
+# MAGIC     subscription_id,
+# MAGIC     subscription_term_id,
+# MAGIC     invoice_id,
+# MAGIC     current_period_start_at,
+# MAGIC     current_period_end_dt,
+# MAGIC     renewal_window_end_dt
+# MAGIC FROM (
+# MAGIC     SELECT
+# MAGIC         *,
+# MAGIC         ROW_NUMBER() OVER (
+# MAGIC             PARTITION BY subscription_id
+# MAGIC             ORDER BY created_at DESC, invoice_id DESC
+# MAGIC         ) AS rnk
+# MAGIC     FROM (
+# MAGIC         SELECT
+# MAGIC             invoices.subscription_id,
+# MAGIC             invoices.subscription_term_id,
+# MAGIC             invoices.invoice_id,
+# MAGIC             invoices.created_at,
+# MAGIC             invoices.created_at::date AS current_period_start_at,
+# MAGIC             DATEADD(
+# MAGIC                 DAY,
+# MAGIC                 plan_types.term_months * 30,
+# MAGIC                 invoices.created_at
+# MAGIC             ) AS expected_refill_dt,
+# MAGIC             DATEADD(
+# MAGIC                 DAY,
+# MAGIC                 plan_types.term_months * 30 - 1,
+# MAGIC                 invoices.created_at
+# MAGIC             ) AS current_period_end_dt,
+# MAGIC             DATEADD(
+# MAGIC                 DAY,
+# MAGIC                 plan_types.term_months * 30 - 1 + 30,
+# MAGIC                 invoices.created_at
+# MAGIC             ) AS renewal_window_end_dt
+# MAGIC         FROM `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscription_invoices` AS invoices
+# MAGIC         LEFT JOIN `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscription_plan_types` AS plan_types
+# MAGIC             ON invoices.plan_id = plan_types.plan_id
+# MAGIC         WHERE invoices.subscription_id IN (
+# MAGIC             SELECT subscription_id
+# MAGIC             FROM `general_scratch_catalog`.`general_scratch`.`ed_silver_subscriptions_qualified`
+# MAGIC         )
+# MAGIC           AND invoices.is_paid = true
+# MAGIC           AND invoices.is_dup = false
+# MAGIC           AND DATEADD(
+# MAGIC                 DAY,
+# MAGIC                 plan_types.term_months * 30 - 1,
+# MAGIC                 invoices.created_at
+# MAGIC               )::date <= DATE '2026-05-15'
+# MAGIC     ) a
+# MAGIC ) b
+# MAGIC WHERE rnk = 1
+
+# COMMAND ----------
+
+# MAGIC %md ## 9. subscriptions_churn
 
 # COMMAND ----------
 
@@ -271,6 +335,7 @@ silver_tables = [
     "subscription_plan_terms",
     # "subscription_charges",
     "subscription_invoices",
+    "current_periods",
     # "subscriptions_churn",
 ]
 
