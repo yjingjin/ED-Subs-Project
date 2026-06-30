@@ -4,6 +4,8 @@ All bronze tables are loaded from CSVs exported from Redshift (`goodrx_dbt` sche
 and uploaded to the Databricks Volume at:
 `/Volumes/general_scratch_catalog/general_scratch/checkpoints/jiny/ed_subs_raw_uploads/`
 
+**Data pull date: June 30, 2026** — all tables were exported from Redshift on this date.
+
 Bronze tables are raw and unmodified except for three metadata columns added at load time:
 `_ingested_at`, `_source_file`, `_source_table`. All columns are typed (see `load_bronze.py`).
 

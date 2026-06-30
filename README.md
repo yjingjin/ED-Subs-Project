@@ -29,6 +29,8 @@ general_scratch_catalog.general_scratch   (single schema — all medallion table
 
 ## Source tables (goodrx_dbt schema in Redshift)
 
+> **Data pull date: June 30, 2026** — all tables were exported from Redshift on this date.
+
 | Table | Description |
 | --- | --- |
 | `subscriptions` | Core subscription record, one row per subscription |
