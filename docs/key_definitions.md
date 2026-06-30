@@ -30,6 +30,8 @@
 **Churn:** a subscriber is considered churned if they do not renew at the end of a subscription period. For Milestone 1, operationally: no new valid service subscription within 30 days after the current period expires.
 > Example: if a user's current period ends on 2026-05-15 and they do not start a new valid service subscription by 2026-06-14, they are labeled as churned.
 
+> **Implementation note:** renewal invoices are often created a few days before the period technically ends (the billing system charges early to ensure continuity of service). The renewal detection window therefore starts from `current_period_start_at` (not `current_period_end_dt`) to avoid missing early renewals, which would artificially inflate the churn rate.
+
 **Retained:** the subscriber remains subscribed either by continuing into the next period through renewal or by starting a new valid service subscription within 30 days after the current period ends.
 > Example: if a user's period ends on 2026-05-15 and they renew immediately, they are retained. If they start a new valid service subscription on 2026-06-01, they are also retained.
 

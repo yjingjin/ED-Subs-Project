@@ -319,6 +319,11 @@ print(f"Silver : {S}*")
 # MAGIC CREATE OR REPLACE TABLE general_scratch_catalog.general_scratch.ed_silver_subscription_labels AS
 # MAGIC
 # MAGIC WITH renew AS (
+# MAGIC     -- Finds the next renewal invoice within the 30-day window after the current period.
+# MAGIC     -- Lower bound uses current_period_start_at (not current_period_end_dt) because
+# MAGIC     -- renewal invoices are often created a few days BEFORE the period technically ends
+# MAGIC     -- (the billing system charges early to ensure continuity). Using current_period_end_dt
+# MAGIC     -- as the lower bound would miss these early renewals and inflate the churn rate.
 # MAGIC     SELECT
 # MAGIC         cp.subscription_id,
 # MAGIC         MIN(inv.created_at)::date AS next_paid_invoice_created_at
@@ -328,7 +333,7 @@ print(f"Silver : {S}*")
 # MAGIC      AND cp.subscription_term_id = inv.subscription_term_id
 # MAGIC      AND inv.is_paid = TRUE
 # MAGIC      AND inv.invoice_id <> cp.invoice_id
-# MAGIC      AND inv.created_at::date >= cp.current_period_end_dt
+# MAGIC      AND inv.created_at::date > cp.current_period_start_at
 # MAGIC      AND inv.created_at::date <= cp.renewal_window_end_dt
 # MAGIC     GROUP BY 1
 # MAGIC ),
