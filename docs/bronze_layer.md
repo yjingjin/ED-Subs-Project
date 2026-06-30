@@ -13,16 +13,16 @@ Bronze tables are raw and unmodified except for three metadata columns added at 
 
 | Table | WHERE clause | Export date |
 |---|---|---|
-| `ed_bronze_subscriptions` | `condition_name = 'erectile dysfunction' AND is_paid IS TRUE AND is_activated IS TRUE` | 06/22/2026 |
-| `ed_bronze_subscription_terms` | `LOWER(condition_name) = 'erectile dysfunction' AND is_paid IS TRUE` | 06/24/2026 |
-| `ed_bronze_subscription_plan_terms` | `LOWER(condition_name) = 'erectile dysfunction'` | 06/24/2026 |
-| `ed_bronze_subscription_charges` | `LOWER(condition_name) = 'erectile dysfunction'` | 06/24/2026 |
-| `ed_bronze_subscription_invoices` | `LOWER(subscription_subcategory) = 'erectile dysfunction'` | 06/24/2026 |
-| `ed_bronze_subscriptions_churn` | `LOWER(subscription_name) = 'conditions: erectile dysfunction'` | 06/24/2026 |
-| `ed_bronze_subscription_plan_types` | No filter — full reference table | 06/26/2026 |
-| `ed_bronze_int_subs_kafka__events` | `LOWER(condition_name) = 'erectile dysfunction'` | 06/24/2026 |
+| `ed_bronze_subscriptions` | `condition_name = 'erectile dysfunction' AND is_paid IS TRUE AND is_activated IS TRUE` | 06/30/2026 |
+| `ed_bronze_subscription_terms` | `LOWER(condition_name) = 'erectile dysfunction' AND is_paid IS TRUE` | 06/30/2026 |
+| `ed_bronze_subscription_plan_terms` | `LOWER(condition_name) = 'erectile dysfunction'` | 06/30/2026 |
+| `ed_bronze_subscription_charges` | `LOWER(condition_name) = 'erectile dysfunction'` | 06/30/2026 |
+| `ed_bronze_subscription_invoices` | `LOWER(subscription_subcategory) = 'erectile dysfunction'` | 06/30/2026 |
+| `ed_bronze_subscriptions_churn` | `LOWER(subscription_name) = 'conditions: erectile dysfunction'` | 06/30/2026 |
+| `ed_bronze_subscription_plan_types` | No filter — full reference table | 06/30/2026 |
+| `ed_bronze_int_subs_kafka__events` | `LOWER(condition_name) = 'erectile dysfunction'` | 06/30/2026 |
 
-> **`int_subs_kafka__events`** — SQL file exists (`int_subs_kafka__events_06242026.sql`) but this
+> **`int_subs_kafka__events`** — SQL file updated (`int_subs_kafka__events_06302026.sql`) but this
 > table has not yet been added to `load_bronze.py`.
 
 ---
@@ -31,14 +31,14 @@ Bronze tables are raw and unmodified except for three metadata columns added at 
 
 | Table | Source SQL file |
 |---|---|
-| `subscriptions` | `subscriptions_06222026.sql` |
-| `subscription_terms` | `subscription_terms_06242026.sql` |
-| `subscription_plan_terms` | `subscription_plan_terms_06242026.sql` |
-| `subscription_charges` | `subscription_charges_06242026.sql` |
-| `subscription_invoices` | `subscription_invoices_06242026.sql` |
-| `subscriptions_churn` | `subscriptions_churn_06242026.sql` |
-| `subscription_plan_types` | `subscription_plan_types_06262026.sql` |
-| `int_subs_kafka__events` | `int_subs_kafka__events_06242026.sql` |
+| `subscriptions` | `subscriptions_06302026.sql` |
+| `subscription_terms` | `subscription_terms_06302026.sql` |
+| `subscription_plan_terms` | `subscription_plan_terms_06302026.sql` |
+| `subscription_charges` | `subscription_charges_06302026.sql` |
+| `subscription_invoices` | `subscription_invoices_06302026.sql` |
+| `subscriptions_churn` | `subscriptions_churn_06302026.sql` |
+| `subscription_plan_types` | `subscription_plan_types_06302026.sql` |
+| `int_subs_kafka__events` | `int_subs_kafka__events_06302026.sql` |
 
 ---
 

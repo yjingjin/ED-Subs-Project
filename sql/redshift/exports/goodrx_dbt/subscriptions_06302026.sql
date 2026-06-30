@@ -1,4 +1,4 @@
--- query datetime: 06/22/2026 6 pm EST
+-- query datetime: 06/30/2026 4:55 pm EST
 -- Filters: ED only (condition_name = 'erectile dysfunction'), paid and activated subscriptions only.
 -- Exported to CSV → uploaded to Databricks volume → loaded into ed_bronze_subscriptions.
 SELECT
@@ -8,3 +8,5 @@ WHERE
     condition_name = 'erectile dysfunction'
     AND is_paid IS TRUE
     AND is_activated IS TRUE
+
+

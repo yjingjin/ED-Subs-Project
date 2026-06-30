@@ -1,4 +1,4 @@
--- query datetime: 06/24/2026 6 pm EST
+-- query datetime: 06/30/2026 5:08 pm EST
 SELECT
     *
 FROM goodrx_dbt.int_subs_kafka__events
