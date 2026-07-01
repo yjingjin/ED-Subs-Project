@@ -23,6 +23,8 @@ TABLES = [
     "subscription_charges",
     "subscription_invoices",
     "subscriptions_churn",
+    "subscription_orders",
+    "int_subs_kafka__events",
 ]
 
 # COMMAND ----------
@@ -211,6 +213,41 @@ CASTS["subscriptions_churn"] = {
     "net_paid_amount":        DEC,
     "is_reactivated_term":    BOL,
     "is_activated":           BOL,
+}
+
+CASTS["subscription_orders"] = {
+    "status_updated_at":        TS,
+    "created_at":               TS,
+    "in_triage_at":             TS,
+    "in_transit_at":            TS,
+    "canceled_at":              TS,
+    "eta_first_updated_at":     TS,
+    "eta_latest_updated_at":    TS,
+    "completed_at":             TS,
+    "confirmed_at":             TS,
+}
+
+CASTS["int_subs_kafka__events"] = {
+    "raw_occurred_at":              TS,
+    "occurred_at":                  TS,
+    "old_renewal_at":               TS,
+    "new_renewal_at":               TS,
+    "subscription_created_at":      TS,
+    "current_term_end_at":          TS,
+    "condition_id":                 INT,
+    "drug_id":                      INT,
+    "monthly_dose":                 INT,
+    "amount_due":                   DEC,
+    "attempt_number":               INT,
+    "trial_duration_days":          INT,
+    "is_refund":                    BOL,
+    "is_failed":                    BOL,
+    "is_succeeded":                 BOL,
+    "is_charge":                    BOL,
+    "is_trial_end_event":           BOL,
+    "is_first_post_trial_payment":  BOL,
+    "canceled_during_trial":        BOL,
+    "cancel_at_current_term_end":   BOL,
 }
 
 # COMMAND ----------
