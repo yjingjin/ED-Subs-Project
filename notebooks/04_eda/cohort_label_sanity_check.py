@@ -15,6 +15,7 @@ SUBS    = f"{CATALOG}.{SCHEMA}.ed_silver_subscriptions"
 TERMS_B = f"{CATALOG}.{SCHEMA}.ed_bronze_subscription_terms"
 
 # COMMAND ----------
+
 # MAGIC %md ## 1. Cohort size
 
 # COMMAND ----------
@@ -26,7 +27,8 @@ TERMS_B = f"{CATALOG}.{SCHEMA}.ed_bronze_subscription_terms"
 # MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified
 
 # COMMAND ----------
-# MAGIC %md ## 2. Term status distribution — all should be active at snapshot
+
+# MAGIC %md ## 2. Term status distribution — most should be active
 
 # COMMAND ----------
 
@@ -42,6 +44,7 @@ TERMS_B = f"{CATALOG}.{SCHEMA}.ed_bronze_subscription_terms"
 # MAGIC ORDER BY 2 DESC
 
 # COMMAND ----------
+
 # MAGIC %md ## 3. Verify no prior cancellation requests in cohort
 
 # COMMAND ----------
@@ -55,6 +58,7 @@ TERMS_B = f"{CATALOG}.{SCHEMA}.ed_bronze_subscription_terms"
 # MAGIC WHERE t.cancel_requested_at <= '2026-05-01'
 
 # COMMAND ----------
+
 # MAGIC %md ## 4. Verify no already-ended terms in cohort
 
 # COMMAND ----------
@@ -68,7 +72,8 @@ TERMS_B = f"{CATALOG}.{SCHEMA}.ed_bronze_subscription_terms"
 # MAGIC WHERE t.term_ended_at <= '2026-05-01'
 
 # COMMAND ----------
-# MAGIC %md ## 5. Label distribution — cancellation rate
+
+# MAGIC %md ## 5. 30-day cancellation rate since 5/1/2026
 
 # COMMAND ----------
 
@@ -83,6 +88,7 @@ TERMS_B = f"{CATALOG}.{SCHEMA}.ed_bronze_subscription_terms"
 # MAGIC ORDER BY 2 DESC
 
 # COMMAND ----------
+
 # MAGIC %md ## 6. Cross-tab: cancel_status vs current subscription status
 
 # COMMAND ----------
@@ -100,6 +106,25 @@ TERMS_B = f"{CATALOG}.{SCHEMA}.ed_bronze_subscription_terms"
 # MAGIC ORDER BY 1, 3 DESC
 
 # COMMAND ----------
+
+# MAGIC %md
+# MAGIC Check whether those who were marked as cancelled but have active status reactivated
+
+# COMMAND ----------
+
+# DBTITLE 1,Cell 16
+# MAGIC %sql
+# MAGIC SELECT
+# MAGIC count(distinct case when t.subscription_id is not null then l.subscription_id else null end)  n_reactived
+# MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_labels l
+# MAGIC JOIN general_scratch_catalog.general_scratch.ed_silver_subscriptions s
+# MAGIC     ON l.subscription_id = s.subscription_id
+# MAGIC left join general_scratch_catalog.general_scratch.ed_silver_subscription_terms t
+# MAGIC on l.subscription_id = t.subscription_id and l.subscription_term_id != t.subscription_term_id
+# MAGIC where l.cancel_status = 'cancelled' and s.status = 'active'
+
+# COMMAND ----------
+
 # MAGIC %md ## 7. Term start date distribution — confirm all started on or before 2026-05-01
 
 # COMMAND ----------
@@ -112,9 +137,10 @@ TERMS_B = f"{CATALOG}.{SCHEMA}.ed_bronze_subscription_terms"
 # MAGIC JOIN general_scratch_catalog.general_scratch.ed_bronze_subscription_terms t
 # MAGIC     ON q.subscription_term_id = t.subscription_term_id
 # MAGIC GROUP BY 1
-# MAGIC ORDER BY 1
+# MAGIC ORDER BY 1 desc
 
 # COMMAND ----------
+
 # MAGIC %md ## 8. Cancellation timing — when did cancelled subscribers cancel?
 
 # COMMAND ----------
@@ -129,6 +155,7 @@ TERMS_B = f"{CATALOG}.{SCHEMA}.ed_bronze_subscription_terms"
 # MAGIC ORDER BY 1
 
 # COMMAND ----------
+
 # MAGIC %md ## 9. Check for duplicates in cohort (should be one row per subscription_term_id)
 
 # COMMAND ----------
@@ -138,6 +165,7 @@ TERMS_B = f"{CATALOG}.{SCHEMA}.ed_bronze_subscription_terms"
 # MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified
 
 # COMMAND ----------
+
 # MAGIC %md ## 10. Label completeness — every qualified term should have a label
 
 # COMMAND ----------
