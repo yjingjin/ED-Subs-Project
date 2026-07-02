@@ -13,7 +13,7 @@ SCHEMA  = "general_scratch"
 EVENTS   = f"{CATALOG}.{SCHEMA}.ed_bronze_int_subs_kafka__events"
 TERMS    = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_terms"
 LABELS   = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_labels"
-QUAL     = f"{CATALOG}.{SCHEMA}.ed_silver_subscriptions_qualified"
+QUAL     = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_terms_qualified"
 
 # COMMAND ----------
 
@@ -64,7 +64,7 @@ QUAL     = f"{CATALOG}.{SCHEMA}.ed_silver_subscriptions_qualified"
 
 # MAGIC %sql
 # MAGIC WITH cohort AS (
-# MAGIC     SELECT subscription_id FROM general_scratch_catalog.general_scratch.ed_silver_subscriptions_qualified
+# MAGIC     SELECT subscription_id FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified
 # MAGIC ),
 # MAGIC deferred AS (
 # MAGIC     SELECT DISTINCT subscription_id
@@ -91,7 +91,7 @@ QUAL     = f"{CATALOG}.{SCHEMA}.ed_silver_subscriptions_qualified"
 # MAGIC %sql
 # MAGIC WITH cohort AS (
 # MAGIC     SELECT subscription_id 
-# MAGIC     FROM general_scratch_catalog.general_scratch.ed_silver_subscriptions_qualified
+# MAGIC     FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified
 # MAGIC ),
 # MAGIC deferral_counts AS (
 # MAGIC     SELECT
@@ -120,7 +120,7 @@ QUAL     = f"{CATALOG}.{SCHEMA}.ed_silver_subscriptions_qualified"
 # MAGIC WITH cohort AS (
 # MAGIC     SELECT 
 # MAGIC     subscription_id 
-# MAGIC     FROM general_scratch_catalog.general_scratch.ed_silver_subscriptions_qualified
+# MAGIC     FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified
 # MAGIC )
 # MAGIC
 # MAGIC SELECT
@@ -212,7 +212,7 @@ QUAL     = f"{CATALOG}.{SCHEMA}.ed_silver_subscriptions_qualified"
 # MAGIC     WHERE event_name = 'term_renewal_time_changed'
 # MAGIC ),
 # MAGIC cohort AS (
-# MAGIC     SELECT subscription_id FROM general_scratch_catalog.general_scratch.ed_silver_subscriptions_qualified
+# MAGIC     SELECT subscription_id FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified
 # MAGIC )
 # MAGIC SELECT
 # MAGIC     CASE WHEN d.subscription_id IS NOT NULL THEN 'deferred' ELSE 'never deferred' END AS deferral_group,
@@ -234,7 +234,7 @@ QUAL     = f"{CATALOG}.{SCHEMA}.ed_silver_subscriptions_qualified"
 # MAGIC %sql
 # MAGIC -- Days before original renewal date that the deferral event occurred
 # MAGIC WITH cohort AS (
-# MAGIC     SELECT subscription_id FROM general_scratch_catalog.general_scratch.ed_silver_subscriptions_qualified
+# MAGIC     SELECT subscription_id FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified
 # MAGIC )
 # MAGIC SELECT
 # MAGIC     DATEDIFF(DAY, e.occurred_at::date, e.old_renewal_at::date) AS days_before_renewal,

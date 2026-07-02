@@ -4,9 +4,14 @@
 # Re-run is safe: all cells use CREATE OR REPLACE TABLE.
 #
 # Run order matters:
-#   1. subscriptions_qualified  (defines the cohort — must be first)
+#   1. subscription_terms_qualified  (defines the cohort — must be first)
 #   2. subscription_plan_types  (reference table — no cohort dependency)
 #   3-8. All other tables       (filter to qualified subscription_ids)
+#
+# Cohort definition (Milestone 1):
+#   Active subscriptions with no prior cancellation request as of 2026-05-01.
+#   Snapshot date: 2026-05-01. Label window: 2026-05-01 to 2026-05-31.
+#   Label: did the subscriber request cancellation within 30 days of snapshot?
 
 # COMMAND ----------
 
@@ -20,51 +25,22 @@ print(f"Silver : {S}*")
 
 # COMMAND ----------
 
-# MAGIC %md ## 1. subscriptions_qualified (cohort — run first)
+# MAGIC %md ## 1. subscription_terms_qualified (cohort — run first)
 
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC -- Cohort: subscriptions whose first paid, non-duplicate invoice has a first_period_end_dt on or before 2026-05-15.
-# MAGIC CREATE OR REPLACE TABLE general_scratch_catalog.general_scratch.ed_silver_subscriptions_qualified AS
+# MAGIC -- Cohort: active subscriptions with no prior cancellation request as of 2026-05-01.
+# MAGIC -- Snapshot date: 2026-05-01
+# MAGIC -- Source: ed_bronze_subscription_terms (actual term dates, not computed)
+# MAGIC CREATE OR REPLACE TABLE general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified AS
 # MAGIC SELECT
-# MAGIC     *
-# MAGIC FROM (
-# MAGIC     SELECT
-# MAGIC         subscription_id,
-# MAGIC         subscription_term_id,
-# MAGIC         invoice_id,
-# MAGIC         created_at AS first_period_start_at,
-# MAGIC         expected_refill_dt AS next_billing_dt,
-# MAGIC         DATEADD(DAY, -1, expected_refill_dt) AS first_period_end_dt,
-# MAGIC         DATEDIFF(DAY, created_at, expected_refill_dt) AS days_between_start_and_next_billing_dt
-# MAGIC     FROM (
-# MAGIC         SELECT
-# MAGIC             invoices.subscription_id,
-# MAGIC             invoices.subscription_term_id,
-# MAGIC             invoices.invoice_id,
-# MAGIC             invoices.created_at,
-# MAGIC             DATEADD(
-# MAGIC                 DAY,
-# MAGIC                 plan_types.term_months * 30,
-# MAGIC                 invoices.created_at
-# MAGIC             ) AS expected_refill_dt,
-# MAGIC             ROW_NUMBER() OVER (
-# MAGIC                 PARTITION BY invoices.subscription_id
-# MAGIC                 ORDER BY invoices.created_at
-# MAGIC             ) AS rnk
-# MAGIC         FROM `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscriptions` AS subs
-# MAGIC         LEFT JOIN `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscription_invoices` AS invoices
-# MAGIC             ON subs.subscription_id = invoices.subscription_id
-# MAGIC         LEFT JOIN `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscription_plan_types` AS plan_types
-# MAGIC             ON invoices.plan_id = plan_types.plan_id
-# MAGIC         WHERE invoices.is_paid = true
-# MAGIC             AND invoices.is_dup = false
-# MAGIC     ) AS temp_1
-# MAGIC     WHERE rnk = 1
-# MAGIC     ORDER BY subscription_id, first_period_start_at
-# MAGIC ) AS temp_2
-# MAGIC WHERE first_period_end_dt::date <= '2026-05-15'
+# MAGIC     DISTINCT subscription_id,
+# MAGIC     subscription_term_id
+# MAGIC FROM `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscription_terms`
+# MAGIC WHERE term_started_at <= '2026-05-01'
+# MAGIC   AND (term_ended_at IS NULL OR term_ended_at > '2026-05-01')
+# MAGIC   AND (cancel_requested_at IS NULL OR cancel_requested_at > '2026-05-01')
 
 # COMMAND ----------
 
@@ -101,7 +77,7 @@ print(f"Silver : {S}*")
 # MAGIC FROM `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscriptions` AS subs
 # MAGIC WHERE subs.subscription_id IN (
 # MAGIC     SELECT subscription_id
-# MAGIC     FROM general_scratch_catalog.general_scratch.ed_silver_subscriptions_qualified
+# MAGIC     FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified
 # MAGIC )
 # MAGIC ORDER BY subs_activated_at
 
@@ -135,7 +111,7 @@ print(f"Silver : {S}*")
 # MAGIC FROM `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscription_terms` AS terms
 # MAGIC WHERE terms.subscription_id IN (
 # MAGIC     SELECT subscription_id
-# MAGIC     FROM general_scratch_catalog.general_scratch.ed_silver_subscriptions_qualified
+# MAGIC     FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified
 # MAGIC )
 # MAGIC ORDER BY terms.subscription_id, terms.term_started_at
 
@@ -174,7 +150,7 @@ print(f"Silver : {S}*")
 # MAGIC FROM `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscription_plan_terms` AS plan_terms
 # MAGIC WHERE plan_terms.subscription_id IN (
 # MAGIC     SELECT subscription_id
-# MAGIC     FROM general_scratch_catalog.general_scratch.ed_silver_subscriptions_qualified
+# MAGIC     FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified
 # MAGIC )
 # MAGIC ORDER BY plan_terms.subscription_id, plan_terms.plan_term_started_at
 
@@ -187,7 +163,7 @@ print(f"Silver : {S}*")
 # MAGIC %sql
 # MAGIC -- TODO: replace with your SQL
 # MAGIC -- Filter to qualified subscription_ids:
-# MAGIC --   WHERE subscription_id IN (SELECT subscription_id FROM general_scratch_catalog.general_scratch.ed_silver_subscriptions_qualified)
+# MAGIC --   WHERE subscription_id IN (SELECT subscription_id FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified)
 # MAGIC -- CREATE OR REPLACE TABLE general_scratch_catalog.general_scratch.ed_silver_subscription_charges AS
 # MAGIC -- SELECT ...
 
@@ -238,147 +214,52 @@ print(f"Silver : {S}*")
 # MAGIC     ON invoices.plan_id = plan_types.plan_id
 # MAGIC WHERE invoices.subscription_id IN (
 # MAGIC     SELECT subscription_id
-# MAGIC     FROM general_scratch_catalog.general_scratch.ed_silver_subscriptions_qualified
+# MAGIC     FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified
 # MAGIC )
 # MAGIC ORDER BY invoices.subscription_id, invoices.created_at
 
 # COMMAND ----------
 
-# MAGIC %md ## 8. current_periods
+# MAGIC %md ## 8. current_periods (deprecated — no longer used)
+# MAGIC -- current_periods was built for the invoice-based cohort (Milestone 1 v1).
+# MAGIC -- It is superseded by the terms-based cohort in subscriptions_qualified.
+# MAGIC -- Kept here for reference; do not run.
+
+# COMMAND ----------
+
+# MAGIC %md ## 9. subscription_labels (cancellation label)
 
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC -- Current period per subscriber: most recent paid, non-dup period ending on or before 2026-05-15.
-# MAGIC -- Used as the observation point for churn labeling.
-# MAGIC CREATE OR REPLACE TABLE general_scratch_catalog.general_scratch.ed_silver_current_periods AS
-# MAGIC SELECT
-# MAGIC     subscription_id,
-# MAGIC     subscription_term_id,
-# MAGIC     invoice_id,
-# MAGIC     current_period_start_at,
-# MAGIC     current_period_end_dt,
-# MAGIC     renewal_window_end_dt
-# MAGIC FROM (
-# MAGIC     SELECT
-# MAGIC         *,
-# MAGIC         ROW_NUMBER() OVER (
-# MAGIC             PARTITION BY subscription_id
-# MAGIC             ORDER BY created_at DESC, invoice_id DESC
-# MAGIC         ) AS rnk
-# MAGIC     FROM (
-# MAGIC         SELECT
-# MAGIC             invoices.subscription_id,
-# MAGIC             invoices.subscription_term_id,
-# MAGIC             invoices.invoice_id,
-# MAGIC             invoices.created_at,
-# MAGIC             invoices.created_at::date AS current_period_start_at,
-# MAGIC             DATEADD(
-# MAGIC                 DAY,
-# MAGIC                 plan_types.term_months * 30,
-# MAGIC                 invoices.created_at
-# MAGIC             ) AS expected_refill_dt,
-# MAGIC             DATEADD(
-# MAGIC                 DAY,
-# MAGIC                 plan_types.term_months * 30 - 1,
-# MAGIC                 invoices.created_at
-# MAGIC             ) AS current_period_end_dt,
-# MAGIC             DATEADD(
-# MAGIC                 DAY,
-# MAGIC                 plan_types.term_months * 30 - 1 + 30,
-# MAGIC                 invoices.created_at
-# MAGIC             ) AS renewal_window_end_dt
-# MAGIC         FROM `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscription_invoices` AS invoices
-# MAGIC         LEFT JOIN `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscription_plan_types` AS plan_types
-# MAGIC             ON invoices.plan_id = plan_types.plan_id
-# MAGIC         WHERE invoices.subscription_id IN (
-# MAGIC             SELECT subscription_id
-# MAGIC             FROM `general_scratch_catalog`.`general_scratch`.`ed_silver_subscriptions_qualified`
-# MAGIC         )
-# MAGIC           AND invoices.is_paid = true
-# MAGIC           AND invoices.is_dup = false
-# MAGIC           AND DATEADD(
-# MAGIC                 DAY,
-# MAGIC                 plan_types.term_months * 30 - 1,
-# MAGIC                 invoices.created_at
-# MAGIC               )::date <= DATE '2026-05-15'
-# MAGIC     ) a
-# MAGIC ) b
-# MAGIC WHERE rnk = 1
-
-# COMMAND ----------
-
-# MAGIC %md ## 9. subscription_labels (churn label)
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC -- Churn label per qualified subscriber based on current period.
-# MAGIC -- is_churned = 0 (retained): new paid invoice OR new active term within 30 days after current period end.
-# MAGIC -- is_churned = 1 (churned): no renewal within 30 days.
+# MAGIC -- Cancellation label per qualified subscribtion.
+# MAGIC -- Snapshot date: 2026-05-01. Label window: 2026-05-01 (exclusive) to 2026-05-31 (inclusive) (30 days).
+# MAGIC -- is_cancelled = 1: cancel_requested_at falls within the label window.
+# MAGIC -- is_cancelled = 0: no cancellation request in the label window.
+# MAGIC -- Voluntary vs involuntary churn distinction to be added in a future milestone.
 # MAGIC CREATE OR REPLACE TABLE general_scratch_catalog.general_scratch.ed_silver_subscription_labels AS
-# MAGIC
-# MAGIC WITH renew AS (
-# MAGIC     -- Finds the next renewal invoice within the 30-day window after the current period.
-# MAGIC     -- Lower bound uses current_period_start_at (not current_period_end_dt) because
-# MAGIC     -- renewal invoices are often created a few days BEFORE the period technically ends
-# MAGIC     -- (the billing system charges early to ensure continuity). Using current_period_end_dt
-# MAGIC     -- as the lower bound would miss these early renewals and inflate the churn rate.
-# MAGIC     SELECT
-# MAGIC         cp.subscription_id,
-# MAGIC         MIN(inv.created_at)::date AS next_paid_invoice_created_at
-# MAGIC     FROM general_scratch_catalog.general_scratch.ed_silver_current_periods cp
-# MAGIC     JOIN general_scratch_catalog.general_scratch.ed_silver_subscription_invoices inv
-# MAGIC       ON cp.subscription_id = inv.subscription_id
-# MAGIC      AND cp.subscription_term_id = inv.subscription_term_id
-# MAGIC      AND inv.is_paid = TRUE
-# MAGIC      AND inv.invoice_id <> cp.invoice_id
-# MAGIC      AND inv.created_at::date > cp.current_period_start_at
-# MAGIC      AND inv.created_at::date <= cp.renewal_window_end_dt
-# MAGIC     GROUP BY 1
-# MAGIC ),
-# MAGIC
-# MAGIC reactivation AS (
-# MAGIC     SELECT
-# MAGIC         cp.subscription_id,
-# MAGIC         MIN(t.term_started_at)::date AS next_active_term_started_at
-# MAGIC     FROM general_scratch_catalog.general_scratch.ed_silver_current_periods cp
-# MAGIC     JOIN general_scratch_catalog.general_scratch.ed_silver_subscription_terms t
-# MAGIC       ON cp.subscription_id = t.subscription_id
-# MAGIC      AND t.subscription_term_id <> cp.subscription_term_id
-# MAGIC      AND t.term_started_at::date >= cp.current_period_end_dt
-# MAGIC      AND t.term_started_at::date <= cp.renewal_window_end_dt
-# MAGIC     GROUP BY 1
-# MAGIC )
-# MAGIC
 # MAGIC SELECT
-# MAGIC     cp.subscription_id,
-# MAGIC     cp.subscription_term_id,
-# MAGIC     cp.invoice_id,
-# MAGIC     cp.current_period_start_at,
-# MAGIC     cp.current_period_end_dt,
-# MAGIC     cp.renewal_window_end_dt,
-# MAGIC     npi.next_paid_invoice_created_at AS auto_renew_dt,
-# MAGIC     nat.next_active_term_started_at AS reactivation_dt,
-# MAGIC     CASE WHEN npi.subscription_id IS NOT NULL THEN TRUE ELSE FALSE END
-# MAGIC         AS is_auto_renewed,
-# MAGIC     CASE WHEN nat.subscription_id IS NOT NULL THEN TRUE ELSE FALSE END
-# MAGIC         AS is_reactivated,
+# MAGIC     q.subscription_id,
+# MAGIC     q.subscription_term_id,
+# MAGIC     t.term_started_at,
+# MAGIC     t.term_ended_at,
+# MAGIC     t.term_active_until,
+# MAGIC     t.term_status,
+# MAGIC     t.cancel_requested_at,
 # MAGIC     CASE
-# MAGIC         WHEN npi.subscription_id IS NOT NULL
-# MAGIC           OR nat.subscription_id IS NOT NULL
-# MAGIC         THEN 0 ELSE 1
-# MAGIC     END AS churn_label,
+# MAGIC         WHEN t.cancel_requested_at IS NOT NULL
+# MAGIC          AND t.cancel_requested_at <= '2026-05-31'
+# MAGIC         THEN 1 ELSE 0
+# MAGIC     END AS is_cancelled,
 # MAGIC     CASE
-# MAGIC         WHEN npi.subscription_id IS NOT NULL
-# MAGIC           OR nat.subscription_id IS NOT NULL
-# MAGIC         THEN 'retained' ELSE 'churned'
-# MAGIC     END AS churn_status
-# MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_current_periods cp
-# MAGIC LEFT JOIN renew npi
-# MAGIC   ON cp.subscription_id = npi.subscription_id
-# MAGIC LEFT JOIN reactivation nat
-# MAGIC   ON cp.subscription_id = nat.subscription_id
+# MAGIC         WHEN t.cancel_requested_at IS NOT NULL
+# MAGIC          AND t.cancel_requested_at <= '2026-05-31'
+# MAGIC         THEN 'cancelled' ELSE 'not_cancelled'
+# MAGIC     END AS cancel_status
+# MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified q
+# MAGIC LEFT JOIN `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscription_terms` t
+# MAGIC     ON q.subscription_id = t.subscription_id
+# MAGIC    AND q.subscription_term_id = t.subscription_term_id
 
 # COMMAND ----------
 
@@ -389,7 +270,7 @@ print(f"Silver : {S}*")
 # MAGIC %sql
 # MAGIC -- TODO: replace with your SQL
 # MAGIC -- Filter to qualified subscription_ids:
-# MAGIC --   WHERE subscription_id IN (SELECT subscription_id FROM general_scratch_catalog.general_scratch.ed_silver_subscriptions_qualified)
+# MAGIC --   WHERE subscription_id IN (SELECT subscription_id FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified)
 # MAGIC -- CREATE OR REPLACE TABLE general_scratch_catalog.general_scratch.ed_silver_subscriptions_churn AS
 # MAGIC -- SELECT ...
 
@@ -402,14 +283,14 @@ print(f"Silver : {S}*")
 
 # Row count summary — run after all tables are built
 silver_tables = [
-    "subscriptions_qualified",
+    "subscription_terms_qualified",
     "subscription_plan_types",
     "subscriptions",
     "subscription_terms",
     "subscription_plan_terms",
     # "subscription_charges",
     "subscription_invoices",
-    "current_periods",
+    # "current_periods",    # deprecated
     "subscription_labels",
     # "subscriptions_churn",
 ]

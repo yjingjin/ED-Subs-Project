@@ -3,54 +3,76 @@
 ## Business
 
 **Active subscriber:** a user with a successful subscription payment and an Rx written.
+
 > Example: if a user is successfully charged and a provider writes the Rx, the user is active.
 
 **Period:** one paid billing cycle. A period can be 1, 3, or 6 months long.
+
 > Example: if a user starts an ED subscription on 7/1 and ends on 12/31 on a 3-month cadence, the term includes two periods: 7/1–9/30 and 10/1–12/31.
 
 **Subscription term:** the continuous paid period of access. A term can include one or more consecutive periods.
+
 > Example: if a user starts a 3-month ED subscription on 7/1 and remains subscribed until 12/31, then 7/1–12/31 is one continuous subscription term, made up of two 3-month periods.
 
 **Cancellation request:** the subscriber asks to cancel the subscription. The subscription remains active through the already-paid term.
+
 > Example: if a user cancels on April 10 but the current term ends on May 31, the subscription stays active until June 1.
 
 **Undo cancellation:** a subscriber reverses a prior cancellation request before it takes effect.
+
 > Example: if a user submits a cancellation request on April 10 and reverses it on April 20 before the term ends, that is an undo cancellation.
 
 ---
 
-## Modeling
+## Modeling (Milestone 1)
 
-**Snapshot date:** the upper-bound date used to define the modeling cohort and select each user's current period. In this framework, the snapshot date is **2026-05-15**.
-> Example: when building the cohort for the 2026-05-15 snapshot, only information available on or before 2026-05-15 is used.
+**Snapshot date:** 2026-05-01. The date used to define the cohort and freeze observable features.
 
-**Current period:** the most recent subscription period ending on or before the snapshot date.
-> Example: if a user had periods ending on 2025-12-15, 2026-02-15, and 2026-05-10, then for the 2026-05-15 snapshot, the current period is the period ending on 2026-05-10.
+**Label window:** 2026-05-01 (exclusive) to 2026-05-31 (inclusive) (30 days after snapshot).
 
-**Churn:** a subscriber is considered churned if they do not renew at the end of a subscription period. For Milestone 1, operationally: no new valid service subscription within 30 days after the current period expires.
-> Example: if a user's current period ends on 2026-05-15 and they do not start a new valid service subscription by 2026-06-14, they are labeled as churned.
+**Label end date:** 2026-05-31.
 
-> **Implementation note:** renewal invoices are often created a few days before the period technically ends (the billing system charges early to ensure continuity of service). The renewal detection window therefore starts from `current_period_start_at` (not `current_period_end_dt`) to avoid missing early renewals, which would artificially inflate the churn rate.
+**Cohort:** all active subscriptions with no prior cancellation request as of the snapshot date.
 
-**Retained:** the subscriber remains subscribed either by continuing into the next period through renewal or by starting a new valid service subscription within 30 days after the current period ends.
-> Example: if a user's period ends on 2026-05-15 and they renew immediately, they are retained. If they start a new valid service subscription on 2026-06-01, they are also retained.
+> Table: `ed_silver_subscription_terms_qualified`
 
-**Label end date:** the last date used to label whether the current period ends in churn or retention. This ensures enough time has passed to observe the outcome for every user in the cohort. In this framework, the label end date is **2026-06-14**, so each period selected at the 2026-05-15 snapshot has a full 30-day outcome window.
-> Example: if a user's current period ends on 2026-05-15, we observe through 2026-06-14 to determine whether they are retained or churned.
+```
+term_started_at <= '2026-05-01'
+AND (term_ended_at IS NULL OR term_ended_at > '2026-05-01')
+AND (cancel_requested_at IS NULL OR cancel_requested_at > '2026-05-01')
+```
 
-**Prediction point:** the moment when we "freeze" what we know about a user and ask: based on everything up to this point, will this user churn in the future? It is also the moment when we ask the model for a churn risk score. In this framework, the prediction point is **50% through the current period**.
-> Example: for a 6-month period, the prediction point is at month 3. For a 1-month period, it is halfway through the month.
-> Exclude users who submitted a cancellation request before the prediction point. The model is then scoped to users who have not yet decided at the prediction point, which matches the prevention use case. Those "already decided" users should not go to a prevention model.
+> Subscriptions that already had a cancellation request on or before 2026-05-01 are excluded — they are already-decided churners and cannot be prevented. Since reactivation was not available before June 2026, there are limited reactivation data, so reactivation is not in the scope of Milstoen 1. In this way, these are definite churners.
 
-**Cohort:** ED users who had at least one subscription period ending on or before the snapshot date, but no earlier than 12 months before the snapshot date.
-> Example: for a 2026-05-15 snapshot, eligible users must have at least one period ending between 2025-05-15 and 2026-05-15.
-> As of Milestone 1 (June 2026), the 12-month restriction does not affect cohort selection. However, it will become important as the product matures, because behavior, product, and market conditions from the earliest cohorts may no longer be representative of current users.
+**Label (Milestone 1):** did the subscriber request cancellation within the 30-day label window?
 
-**Voluntary churn:** churn driven by an explicit user decision to stop the subscription, such as a user-initiated cancellation.
-> Example: if a user cancels and does not reverse or start a new valid subscription within 30 days after term ends, that is voluntary churn.
+```
+is_cancelled = 1  if cancel_requested_at BETWEEN '2026-05-02' AND '2026-05-31'
+is_cancelled = 0  if cancel_requested_at IS NULL OR cancel_requested_at > '2026-05-31'
+```
 
-**Involuntary churn:** churn driven by payment, operational, or administrative failure rather than clear user intent, such as charge failure.
-> Example: if a renewal attempt fails because the payment method is declined and the user does not re-subscribe within 30 days after term ends, that is involuntary churn.
+> Subscriptions are auto-renew. A subscriber must actively cancel to stop being charged.
+> Therefore, voluntary churn = cancellation request. The label directly captures user intent.
 
-**Reactivation:** a subscriber starts a new active term after the previous term ends without a renewal. Reactivation does not necessarily imply prior churn, because it can occur within the 30-day churn window.
-> Example: if a user's term ends on 2026-05-15 without a renewal and they start a new active term on 2026-05-25, that is a reactivation, but the user is still considered retained because it happened within the 30-day window.
+**Voluntary churn:** churn driven by an explicit user cancellation request (`cancel_requested_at IS NOT NULL`).
+
+**Involuntary churn:** churn driven by payment failure (ask Kevin:`is_failed_payment_canceled = TRUE` at the term level). Involuntary churn is included in EDA but excluded from model training — it is not driven by user intent and is not actionable by a prevention model.
+
+**Reactivation:** not in scope for Milestone 1. Reactivation only became available after June 2026 and data is sparse. Churn is treated as irreversible for this milestone.
+
+**Deferred renewal:** a subscriber pushes their next renewal date to a later date
+(`event_name = 'term_renewal_time_changed' AND changed_by = 'CHANGED_BY_USER'` in `int_subs_kafka__events`).
+Deferred subscribers remain active (term not ended) and naturally remain in the cohort with `is_cancelled = 0`.
+
+**Production use:** the model scores all active subscriptions at any point in time and predicts:
+
+> "Will this subscriber request cancellation in the next 30 days?"
+
+This is actionable — we can intervene before the cancellation request is submitted.
+
+---
+
+## Implementation notes
+
+- `Ask kevin: term_ended_at` is only populated when a subscription is already cancelled/terminated. For active subscriptions, use `term_active_until` for the expected end date.
+

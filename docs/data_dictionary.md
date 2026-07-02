@@ -54,25 +54,25 @@ Core subscription record. One row per subscription.
 One row per billing term (renewal period) within a subscription.
 
 
-| Column                     | Type      | Description                                                                                                              |
-| -------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------ |
-| subscription_term_id       | string    | Primary key                                                                                                              |
-| subscription_id            | string    | FK → subscriptions                                                                                                       |
-| common_id                  | string    | Cross-table join key                                                                                                     |
-| term_number                | int       | 1 = first term, 2 = first renewal, …                                                                                     |
-| term_started_at            | timestamp | Term start                                                                                                               |
-| term_ended_at              | timestamp | Timestamp of subscription termination. NULL if the term is still active                                                  |
-| term_active_until          | timestamp | Timestamp of the date that the term is active until                                                                      |
-| next_term_started_at       | timestamp | Start of the next renewal                                                                                                |
-| term_status                | string    | `active`, `canceled`, `paused`, …                                                                                        |
-| termination_type           | string    | How the term ended                                                                                                       |
-| is_new_start               | bool      | True for the first term of the subscription                                                                              |
-| is_paid                    | bool      | Whether this term was paid                                                                                               |
-| is_delinquent              | bool      | The latest charge on the latest term invoice failed, but the subscription was still left active after that failed charge |
-| is_failed_payment_canceled | bool      | The latest charge on the latest term invoice failed and that failure caused the subscription to be paused or canceled    |
-| cancel_requested_at        | timestamp | When cancellation was requested                                                                                          |
-| cancel_reason              | string    | Cancellation reason                                                                                                      |
-| _updated_ts                | timestamp | Last update timestamp                                                                                                    |
+| Column                     | Type      | Description                                                                                                                                                                                                                       |
+| -------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| subscription_term_id       | string    | Primary key                                                                                                                                                                                                                       |
+| subscription_id            | string    | FK → subscriptions                                                                                                                                                                                                                |
+| common_id                  | string    | Cross-table join key                                                                                                                                                                                                              |
+| term_number                | int       | 1 = first term, 2 = first renewal, …                                                                                                                                                                                              |
+| term_started_at            | timestamp | Term start                                                                                                                                                                                                                        |
+| term_ended_at              | timestamp | ask Kevin: Timestamp when the term fully ended. NULL if the term is still active OR if the subscription was cancelled but the current paid period has not yet expired (the subscription remains accessible until the period ends) |
+| term_active_until          | timestamp | Timestamp of the date that the term is active until                                                                                                                                                                               |
+| next_term_started_at       | timestamp | Start of the next renewal                                                                                                                                                                                                         |
+| term_status                | string    | `active`, `canceled`, `paused`, …                                                                                                                                                                                                 |
+| termination_type           | string    | How the term ended                                                                                                                                                                                                                |
+| is_new_start               | bool      | True for the first term of the subscription                                                                                                                                                                                       |
+| is_paid                    | bool      | Whether this term was paid                                                                                                                                                                                                        |
+| is_delinquent              | bool      | The latest charge on the latest term invoice failed, but the subscription was still left active after that failed charge                                                                                                          |
+| is_failed_payment_canceled | bool      | The latest charge on the latest term invoice failed and that failure caused the subscription to be paused or canceled                                                                                                             |
+| cancel_requested_at        | timestamp | When cancellation was requested                                                                                                                                                                                                   |
+| cancel_reason              | string    | Cancellation reason                                                                                                                                                                                                               |
+| _updated_ts                | timestamp | Last update timestamp                                                                                                                                                                                                             |
 
 
 ---
@@ -89,7 +89,7 @@ Drug/plan details within each subscription term. A term can have multiple plan t
 | subscription_id           | string    | FK → subscriptions                                           |
 | plan_term_number          | int       | Sequential plan term within the subscription                 |
 | plan_term_started_at      | timestamp | When this plan started                                       |
-| plan_term_ended_at        | timestamp | When this plan ended (null if current)                       |
+| plan_term_ended_at        | timestamp | ask Kevin: When this plan ended (null if current)            |
 | plan_term_status          | string    | `active`, `ended`                                            |
 | is_latest_plan_term       | bool      | True if this is the current plan                             |
 | plan_id                   | string    | Plan identifier                                              |
@@ -245,25 +245,28 @@ Reference table for plan definitions — one row per plan. Maps `plan_id` to dru
 | _fivetran_deleted      | boolean   | Soft-delete flag from Fivetran sync     |
 | _fivetran_synced       | timestamp | Last Fivetran sync timestamp            |
 
+
 ---
 
 ## subscription_orders
 
 Order fulfillment records linked to ED subscription invoices. Filtered via join to `subscription_invoices` on `latest_order_id`.
 
-| Column | Type | Description |
-|---|---|---|
-| order_id | string | Primary key |
-| status | string | Current order status (e.g. `Fulfillment Cancelled`, `Completed`) |
-| created_at | timestamp | When the order was created |
-| status_updated_at | timestamp | When the status last changed |
-| in_triage_at | timestamp | When the order entered triage |
-| in_transit_at | timestamp | When the order was shipped |
-| canceled_at | timestamp | When the order was canceled (if applicable) |
-| eta_first_updated_at | timestamp | First ETA estimate timestamp |
-| eta_latest_updated_at | timestamp | Most recent ETA estimate timestamp |
-| completed_at | timestamp | When the order was completed/delivered |
-| confirmed_at | timestamp | When the order was confirmed |
+
+| Column                | Type      | Description                                                      |
+| --------------------- | --------- | ---------------------------------------------------------------- |
+| order_id              | string    | Primary key                                                      |
+| status                | string    | Current order status (e.g. `Fulfillment Cancelled`, `Completed`) |
+| created_at            | timestamp | When the order was created                                       |
+| status_updated_at     | timestamp | When the status last changed                                     |
+| in_triage_at          | timestamp | When the order entered triage                                    |
+| in_transit_at         | timestamp | When the order was shipped                                       |
+| canceled_at           | timestamp | When the order was canceled (if applicable)                      |
+| eta_first_updated_at  | timestamp | First ETA estimate timestamp                                     |
+| eta_latest_updated_at | timestamp | Most recent ETA estimate timestamp                               |
+| completed_at          | timestamp | When the order was completed/delivered                           |
+| confirmed_at          | timestamp | When the order was confirmed                                     |
+
 
 ---
 
@@ -271,35 +274,36 @@ Order fulfillment records linked to ED subscription invoices. Filtered via join 
 
 Kafka event stream for ED subscriptions. Filtered to two event types relevant to deferral EDA and churn modeling.
 
-| Column | Type | Description |
-|---|---|---|
-| event_id | string | Primary key |
-| event_name | string | Event type: `upcoming_term_renewal_notified` or `term_renewal_time_changed` |
-| tenant_id | string | e.g. `gdrx` |
-| subscription_id | string | FK → subscriptions |
-| common_id | string | Cross-table join key |
-| occurred_at | timestamp | When the event occurred |
-| raw_occurred_at | timestamp | Raw occurred timestamp |
-| old_renewal_at | timestamp | Previous renewal date (populated for `term_renewal_time_changed`) |
-| new_renewal_at | timestamp | New renewal date after deferral (populated for `term_renewal_time_changed`) |
-| current_term_end_at | timestamp | Term end at time of event |
-| subscription_created_at | timestamp | When the subscription was created |
-| condition_id | int | 135 = erectile dysfunction |
-| condition_name | string | e.g. `erectile dysfunction` |
-| drug_id | int | Drug identifier |
-| drug_name | string | e.g. `sildenafil`, `tadalafil (cialis)` |
-| drug_strength | string | e.g. `50mg`, `2.5mg` |
-| monthly_dose | int | Doses per month |
-| plan_id | string | Plan at time of event |
-| plan_name | string | Plan name at time of event |
-| amount_due | decimal | Amount due (for payment events) |
-| is_succeeded | boolean | Payment succeeded |
-| is_failed | boolean | Payment failed |
-| is_charge | boolean | Is a charge event |
-| cancel_at_current_term_end | boolean | Scheduled to cancel at term end |
-| changed_by | string | Who triggered the event |
-| reason | string | Reason for the event |
-| order_id | string | FK → subscription_orders |
-| invoice_id | string | FK → subscription_invoices |
+
+| Column                     | Type      | Description                                                                                                                                                              |
+| -------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| event_id                   | string    | Primary key                                                                                                                                                              |
+| event_name                 | string    | Event type: `upcoming_term_renewal_notified` or `term_renewal_time_changed`                                                                                              |
+| tenant_id                  | string    | e.g. `gdrx`                                                                                                                                                              |
+| subscription_id            | string    | FK → subscriptions                                                                                                                                                       |
+| common_id                  | string    | Cross-table join key                                                                                                                                                     |
+| occurred_at                | timestamp | When the event occurred                                                                                                                                                  |
+| raw_occurred_at            | timestamp | Raw occurred timestamp                                                                                                                                                   |
+| old_renewal_at             | timestamp | Previous renewal date (populated for `term_renewal_time_changed`)                                                                                                        |
+| new_renewal_at             | timestamp | New renewal date after deferral (populated for `term_renewal_time_changed`)                                                                                              |
+| current_term_end_at        | timestamp | Term end at time of event                                                                                                                                                |
+| subscription_created_at    | timestamp | When the subscription was created                                                                                                                                        |
+| condition_id               | int       | 135 = erectile dysfunction                                                                                                                                               |
+| condition_name             | string    | e.g. `erectile dysfunction`                                                                                                                                              |
+| drug_id                    | int       | Drug identifier                                                                                                                                                          |
+| drug_name                  | string    | e.g. `sildenafil`, `tadalafil (cialis)`                                                                                                                                  |
+| drug_strength              | string    | e.g. `50mg`, `2.5mg`                                                                                                                                                     |
+| monthly_dose               | int       | Doses per month                                                                                                                                                          |
+| plan_id                    | string    | Plan at time of event                                                                                                                                                    |
+| plan_name                  | string    | Plan name at time of event                                                                                                                                               |
+| amount_due                 | decimal   | Amount due (for payment events)                                                                                                                                          |
+| is_succeeded               | boolean   | Payment succeeded                                                                                                                                                        |
+| is_failed                  | boolean   | Payment failed                                                                                                                                                           |
+| is_charge                  | boolean   | Is a charge event                                                                                                                                                        |
+| cancel_at_current_term_end | boolean   | Scheduled to cancel at term end                                                                                                                                          |
+| changed_by                 | string    | Who triggered the event. `event_name = 'term_renewal_time_changed' AND changed_by = 'CHANGED_BY_USER'` indicates the renewal date was explicitly pushed back by the user |
+| reason                     | string    | Reason for the event                                                                                                                                                     |
+| order_id                   | string    | FK → subscription_orders                                                                                                                                                 |
+| invoice_id                 | string    | FK → subscription_invoices                                                                                                                                               |
 
 
