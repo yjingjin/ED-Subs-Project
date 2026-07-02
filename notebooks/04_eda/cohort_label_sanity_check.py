@@ -1,6 +1,9 @@
 # Databricks notebook source
 # Sanity checks for ed_silver_subscription_terms_qualified and ed_silver_subscription_labels.
 # Run after build_silver.py to validate the cohort and label before EDA/modeling.
+#
+# ed_silver_subscription_terms_qualified contains only: subscription_id, subscription_term_id
+# Additional term attributes are joined from ed_bronze_subscription_terms as needed.
 
 # COMMAND ----------
 
@@ -29,10 +32,12 @@ TERMS_B = f"{CATALOG}.{SCHEMA}.ed_bronze_subscription_terms"
 
 # MAGIC %sql
 # MAGIC SELECT
-# MAGIC     term_status,
+# MAGIC     t.term_status,
 # MAGIC     COUNT(*) AS n,
 # MAGIC     ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 2) AS pct
-# MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified
+# MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified q
+# MAGIC JOIN general_scratch_catalog.general_scratch.ed_bronze_subscription_terms t
+# MAGIC     ON q.subscription_term_id = t.subscription_term_id
 # MAGIC GROUP BY 1
 # MAGIC ORDER BY 2 DESC
 
@@ -44,8 +49,10 @@ TERMS_B = f"{CATALOG}.{SCHEMA}.ed_bronze_subscription_terms"
 # MAGIC %sql
 # MAGIC -- Should return 0 rows
 # MAGIC SELECT COUNT(*) AS n_with_prior_cancel
-# MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified
-# MAGIC WHERE cancel_requested_at <= '2026-05-01'
+# MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified q
+# MAGIC JOIN general_scratch_catalog.general_scratch.ed_bronze_subscription_terms t
+# MAGIC     ON q.subscription_term_id = t.subscription_term_id
+# MAGIC WHERE t.cancel_requested_at <= '2026-05-01'
 
 # COMMAND ----------
 # MAGIC %md ## 4. Verify no already-ended terms in cohort
@@ -55,8 +62,10 @@ TERMS_B = f"{CATALOG}.{SCHEMA}.ed_bronze_subscription_terms"
 # MAGIC %sql
 # MAGIC -- Should return 0 rows
 # MAGIC SELECT COUNT(*) AS n_ended_before_snapshot
-# MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified
-# MAGIC WHERE term_ended_at <= '2026-05-01'
+# MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified q
+# MAGIC JOIN general_scratch_catalog.general_scratch.ed_bronze_subscription_terms t
+# MAGIC     ON q.subscription_term_id = t.subscription_term_id
+# MAGIC WHERE t.term_ended_at <= '2026-05-01'
 
 # COMMAND ----------
 # MAGIC %md ## 5. Label distribution — cancellation rate
@@ -79,7 +88,7 @@ TERMS_B = f"{CATALOG}.{SCHEMA}.ed_bronze_subscription_terms"
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC -- Churned + active should be near zero (main sanity check)
+# MAGIC -- Cancelled + active should be near zero (main sanity check)
 # MAGIC SELECT
 # MAGIC     l.cancel_status,
 # MAGIC     s.status,
@@ -97,9 +106,11 @@ TERMS_B = f"{CATALOG}.{SCHEMA}.ed_bronze_subscription_terms"
 
 # MAGIC %sql
 # MAGIC SELECT
-# MAGIC     DATE_TRUNC('month', term_started_at) AS term_start_month,
+# MAGIC     DATE_TRUNC('month', t.term_started_at) AS term_start_month,
 # MAGIC     COUNT(*) AS n
-# MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified
+# MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified q
+# MAGIC JOIN general_scratch_catalog.general_scratch.ed_bronze_subscription_terms t
+# MAGIC     ON q.subscription_term_id = t.subscription_term_id
 # MAGIC GROUP BY 1
 # MAGIC ORDER BY 1
 
