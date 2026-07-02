@@ -222,7 +222,6 @@ print(f"Silver : {S}*")
 # MAGIC     invoices.drug_name,
 # MAGIC     invoices.term_started_at,
 # MAGIC     invoices.term_ended_at,
-# MAGIC     invoices.expected_term_end_at,
 # MAGIC     invoices.cancel_requested_at,
 # MAGIC     DATEADD(DAY, plan_types.term_months * 30, invoices.created_at) AS expected_refill_dt,
 # MAGIC     invoices.next_invoice_number,

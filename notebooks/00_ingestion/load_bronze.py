@@ -170,7 +170,6 @@ CASTS["subscription_invoices"] = {
     "term_ended_at":            TS,
     "plan_term_started_at":     TS,
     "plan_term_ended_at":       TS,
-    "expected_term_end_at":     TS,
     "order_updated_at":         TS,
     "cancel_requested_at":      TS,
     "next_invoice_created_at":  TS,
