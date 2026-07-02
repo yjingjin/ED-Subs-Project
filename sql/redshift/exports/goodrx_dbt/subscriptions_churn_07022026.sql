@@ -1,4 +1,4 @@
--- query datetime: 06/30/2026 5:17 pm EST
+-- query datetime: 07/02/2026 6:05 pm EST
 SELECT
     *
 FROM goodrx_dbt.subscriptions_churn

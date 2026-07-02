@@ -4,14 +4,18 @@
 # Re-run is safe: all cells use CREATE OR REPLACE TABLE.
 #
 # Run order matters:
-#   1. subscription_terms_qualified  (defines the cohort — must be first)
+#   1. subscription_terms_qualified  (base cohort pool — must be first)
 #   2. subscription_plan_types  (reference table — no cohort dependency)
 #   3-8. All other tables       (filter to qualified subscription_ids)
 #
 # Cohort definition (Milestone 1):
-#   Active subscriptions with no prior cancellation request as of 2026-05-01.
-#   Snapshot date: 2026-05-01. Label window: 2026-05-01 to 2026-05-31.
-#   Label: did the subscriber request cancellation within 30 days of snapshot?
+#   All non-reactivated subscription terms started before 2026-06-01 (data cutoff).
+#   No fixed prediction point — rolling window logic applies per-observation filters on top.
+#   Reactivated terms are excluded (modeled separately in future milestones).
+#
+# Two modeling approaches to be tested (see key_definitions.md):
+#   Forward:  prediction points roll forward from term_started_at every 30 days until 2026-05-31.
+#   Backward: for churned subscribers, prediction points roll backward from cancel_requested_at.
 
 # COMMAND ----------
 
@@ -30,17 +34,28 @@ print(f"Silver : {S}*")
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC -- Cohort: active subscriptions with no prior cancellation request as of 2026-05-01.
-# MAGIC -- Snapshot date: 2026-05-01
-# MAGIC -- Source: ed_bronze_subscription_terms (actual term dates, not computed)
+# MAGIC -- Base cohort pool: all non-reactivated subscription terms started before the data cutoff.
+# MAGIC -- No fixed prediction point date — the rolling window logic applies per-observation filters on top.
+# MAGIC -- Data cutoff: 2026-06-01 (data was pulled 2026-06-30; latest prediction point is 2026-05-31
+# MAGIC --              to allow a full 30-day label window within the pull date).
+# MAGIC -- Excludes reactivated terms (subscriber had a previous term that fully ended before this one).
 # MAGIC CREATE OR REPLACE TABLE general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified AS
 # MAGIC SELECT
-# MAGIC     DISTINCT subscription_id,
-# MAGIC     subscription_term_id
-# MAGIC FROM `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscription_terms`
-# MAGIC WHERE term_started_at <= '2026-05-01'
-# MAGIC   AND (term_ended_at IS NULL OR term_ended_at > '2026-05-01')
-# MAGIC   AND (cancel_requested_at IS NULL OR cancel_requested_at > '2026-05-01')
+# MAGIC     DISTINCT t.subscription_id,
+# MAGIC     t.subscription_term_id
+# MAGIC FROM `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscription_terms` t
+# MAGIC WHERE t.term_started_at < '2026-06-01'
+# MAGIC   AND NOT (
+# MAGIC       t.term_number > 1
+# MAGIC       AND t.is_new_start = FALSE
+# MAGIC       AND EXISTS (
+# MAGIC           SELECT 1
+# MAGIC           FROM `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscription_terms` prev
+# MAGIC           WHERE prev.subscription_id = t.subscription_id
+# MAGIC             AND prev.term_number = t.term_number - 1
+# MAGIC             AND prev.term_ended_at IS NOT NULL
+# MAGIC       )
+# MAGIC   )
 
 # COMMAND ----------
 
@@ -59,12 +74,15 @@ print(f"Silver : {S}*")
 # COMMAND ----------
 
 # MAGIC %sql
+# MAGIC -- ed_bronze_subscriptions is pre-filtered to is_paid = TRUE AND is_activated = TRUE at export.
+# MAGIC -- No additional activation filter needed here — all rows are paid+activated ED subscriptions.
 # MAGIC CREATE OR REPLACE TABLE general_scratch_catalog.general_scratch.ed_silver_subscriptions AS
 # MAGIC SELECT
 # MAGIC     subs.subscription_id,
 # MAGIC     subs.common_id,
 # MAGIC     subs.activated_at AS subs_activated_at,
 # MAGIC     subs.status,
+# MAGIC     subs.is_paid AS subs_is_paid,
 # MAGIC     subs.is_activated AS subs_is_activated,
 # MAGIC     subs.latest_canceled_at AS subs_latest_canceled_at,
 # MAGIC     subs.latest_paused_at AS subs_latest_paused_at,
@@ -227,39 +245,40 @@ print(f"Silver : {S}*")
 
 # COMMAND ----------
 
-# MAGIC %md ## 9. subscription_labels (cancellation label)
+# MAGIC %md ## 9. subscription_term_start_labels (cancellation label)
 
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC -- Cancellation label per qualified subscribtion.
-# MAGIC -- Snapshot date: 2026-05-01. Label window: 2026-05-01 (exclusive) to 2026-05-31 (inclusive) (30 days).
-# MAGIC -- is_cancelled = 1: cancel_requested_at falls within the label window.
-# MAGIC -- is_cancelled = 0: no cancellation request in the label window.
-# MAGIC -- Voluntary vs involuntary churn distinction to be added in a future milestone.
-# MAGIC CREATE OR REPLACE TABLE general_scratch_catalog.general_scratch.ed_silver_subscription_labels AS
+# MAGIC -- Cancellation label per qualified, ACTIVATED subscription term.
+# MAGIC -- Prediction point: term_started_at (day 0 of each term).
+# MAGIC -- Label window: term_started_at to term_started_at + 29 days (30 days inclusive).
+# MAGIC -- Activated subs only: bronze subscriptions is NOT pre-filtered by activation,
+# MAGIC -- so filter is applied explicitly here via subs_is_activated = TRUE.
+# MAGIC CREATE OR REPLACE TABLE general_scratch_catalog.general_scratch.ed_silver_subscription_term_start_labels AS
 # MAGIC SELECT
 # MAGIC     q.subscription_id,
 # MAGIC     q.subscription_term_id,
-# MAGIC     t.term_started_at,
-# MAGIC     t.term_ended_at,
-# MAGIC     t.term_active_until,
-# MAGIC     t.term_status,
+# MAGIC     t.term_started_at                               AS prediction_point,
+# MAGIC     DATEADD(DAY, 29, t.term_started_at)             AS label_window_end,
 # MAGIC     t.cancel_requested_at,
 # MAGIC     CASE
-# MAGIC         WHEN t.cancel_requested_at IS NOT NULL
-# MAGIC          AND t.cancel_requested_at <= '2026-05-31'
+# MAGIC         WHEN t.cancel_requested_at BETWEEN t.term_started_at
+# MAGIC                                        AND DATEADD(DAY, 29, t.term_started_at)
 # MAGIC         THEN 1 ELSE 0
 # MAGIC     END AS is_cancelled,
 # MAGIC     CASE
-# MAGIC         WHEN t.cancel_requested_at IS NOT NULL
-# MAGIC          AND t.cancel_requested_at <= '2026-05-31'
+# MAGIC         WHEN t.cancel_requested_at BETWEEN t.term_started_at
+# MAGIC                                        AND DATEADD(DAY, 29, t.term_started_at)
 # MAGIC         THEN 'cancelled' ELSE 'not_cancelled'
 # MAGIC     END AS cancel_status
 # MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified q
-# MAGIC LEFT JOIN `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscription_terms` t
-# MAGIC     ON q.subscription_id = t.subscription_id
-# MAGIC    AND q.subscription_term_id = t.subscription_term_id
+# MAGIC JOIN `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscription_terms` t
+# MAGIC     ON q.subscription_term_id = t.subscription_term_id
+# MAGIC JOIN general_scratch_catalog.general_scratch.ed_silver_subscriptions s
+# MAGIC     ON q.subscription_id = s.subscription_id
+# MAGIC    AND s.subs_is_activated = TRUE
+# MAGIC    AND s.subs_is_paid = TRUE
 
 # COMMAND ----------
 
@@ -291,7 +310,7 @@ silver_tables = [
     # "subscription_charges",
     "subscription_invoices",
     # "current_periods",    # deprecated
-    "subscription_labels",
+    "subscription_term_start_labels",
     # "subscriptions_churn",
 ]
 

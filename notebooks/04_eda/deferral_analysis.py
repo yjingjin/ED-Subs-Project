@@ -12,7 +12,7 @@ SCHEMA  = "general_scratch"
 
 EVENTS   = f"{CATALOG}.{SCHEMA}.ed_bronze_int_subs_kafka__events"
 TERMS    = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_terms"
-LABELS   = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_labels"
+LABELS   = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_term_start_labels"
 QUAL     = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_terms_qualified"
 
 # COMMAND ----------

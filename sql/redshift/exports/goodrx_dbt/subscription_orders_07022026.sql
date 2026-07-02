@@ -1,4 +1,4 @@
--- query datetime: 07/01/2026 12:28 pm EST
+-- query datetime: 07/02/2026 5:56 pm EST
 select
     orders.*
 from goodrx_dbt.subscription_orders as orders

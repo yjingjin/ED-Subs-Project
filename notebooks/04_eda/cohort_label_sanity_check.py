@@ -1,5 +1,5 @@
 # Databricks notebook source
-# Sanity checks for ed_silver_subscription_terms_qualified and ed_silver_subscription_labels.
+# Sanity checks for ed_silver_subscription_terms_qualified and ed_silver_subscription_term_start_labels.
 # Run after build_silver.py to validate the cohort and label before EDA/modeling.
 #
 # ed_silver_subscription_terms_qualified contains only: subscription_id, subscription_term_id
@@ -10,7 +10,7 @@
 CATALOG = "general_scratch_catalog"
 SCHEMA  = "general_scratch"
 QUAL    = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_terms_qualified"
-LABELS  = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_labels"
+LABELS  = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_term_start_labels"
 SUBS    = f"{CATALOG}.{SCHEMA}.ed_silver_subscriptions"
 TERMS_B = f"{CATALOG}.{SCHEMA}.ed_bronze_subscription_terms"
 
@@ -83,7 +83,7 @@ TERMS_B = f"{CATALOG}.{SCHEMA}.ed_bronze_subscription_terms"
 # MAGIC     is_cancelled,
 # MAGIC     COUNT(*)                                                      AS n,
 # MAGIC     ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 2)           AS pct
-# MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_labels
+# MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_term_start_labels
 # MAGIC GROUP BY 1, 2
 # MAGIC ORDER BY 2 DESC
 
@@ -99,7 +99,7 @@ TERMS_B = f"{CATALOG}.{SCHEMA}.ed_bronze_subscription_terms"
 # MAGIC     l.cancel_status,
 # MAGIC     s.status,
 # MAGIC     COUNT(*) AS n
-# MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_labels l
+# MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_term_start_labels l
 # MAGIC JOIN general_scratch_catalog.general_scratch.ed_silver_subscriptions s
 # MAGIC     ON l.subscription_id = s.subscription_id
 # MAGIC GROUP BY 1, 2
@@ -116,7 +116,7 @@ TERMS_B = f"{CATALOG}.{SCHEMA}.ed_bronze_subscription_terms"
 # MAGIC %sql
 # MAGIC SELECT
 # MAGIC count(distinct case when t.subscription_id is not null then l.subscription_id else null end)  n_reactived
-# MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_labels l
+# MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_term_start_labels l
 # MAGIC JOIN general_scratch_catalog.general_scratch.ed_silver_subscriptions s
 # MAGIC     ON l.subscription_id = s.subscription_id
 # MAGIC left join general_scratch_catalog.general_scratch.ed_silver_subscription_terms t
@@ -149,7 +149,7 @@ TERMS_B = f"{CATALOG}.{SCHEMA}.ed_bronze_subscription_terms"
 # MAGIC SELECT
 # MAGIC     DATE_TRUNC('week', cancel_requested_at) AS cancel_week,
 # MAGIC     COUNT(*) AS n
-# MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_labels
+# MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_term_start_labels
 # MAGIC WHERE is_cancelled = 1
 # MAGIC GROUP BY 1
 # MAGIC ORDER BY 1
@@ -176,5 +176,5 @@ TERMS_B = f"{CATALOG}.{SCHEMA}.ed_bronze_subscription_terms"
 # MAGIC     COUNT(l.subscription_term_id)   AS labeled,
 # MAGIC     COUNT(q.subscription_term_id) - COUNT(l.subscription_term_id) AS missing_labels
 # MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified q
-# MAGIC LEFT JOIN general_scratch_catalog.general_scratch.ed_silver_subscription_labels l
+# MAGIC LEFT JOIN general_scratch_catalog.general_scratch.ed_silver_subscription_term_start_labels l
 # MAGIC     ON q.subscription_term_id = l.subscription_term_id

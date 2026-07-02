@@ -1,4 +1,4 @@
--- query datetime: 07/01/2026 12:02 pm
+-- query datetime: 07/02/2026 6 pm
 -- Kafka events for ED subscriptions: deferral (term_renewal_time_changed) and
 -- renewal notification (upcoming_term_renewal_notified) events.
 
