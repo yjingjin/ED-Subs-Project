@@ -11,7 +11,7 @@ CATALOG = "general_scratch_catalog"
 SCHEMA  = "general_scratch"
 
 EVENTS   = f"{CATALOG}.{SCHEMA}.ed_bronze_int_subs_kafka__events"
-TERMS    = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_terms"
+TERMS    = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_all_terms"
 LABELS   = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_term_start_labels"
 QUAL     = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_terms_qualified"
 
@@ -219,7 +219,7 @@ QUAL     = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_terms_qualified"
 # MAGIC     t.term_status,
 # MAGIC     t.termination_type,
 # MAGIC     COUNT(DISTINCT t.subscription_id)                       AS n_subscriptions
-# MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms t
+# MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_all_terms t
 # MAGIC JOIN cohort c ON t.subscription_id = c.subscription_id
 # MAGIC LEFT JOIN deferred d ON t.subscription_id = d.subscription_id
 # MAGIC GROUP BY 1, 2, 3
