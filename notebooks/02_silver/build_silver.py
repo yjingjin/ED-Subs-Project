@@ -45,17 +45,8 @@ print(f"Silver : {S}*")
 # MAGIC     t.subscription_term_id
 # MAGIC FROM `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscription_terms` t
 # MAGIC WHERE t.term_started_at < '2026-06-01'
-# MAGIC   AND NOT (
-# MAGIC       t.term_number > 1
-# MAGIC       AND t.is_new_start = FALSE
-# MAGIC       AND EXISTS (
-# MAGIC           SELECT 1
-# MAGIC           FROM `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscription_terms` prev
-# MAGIC           WHERE prev.subscription_id = t.subscription_id
-# MAGIC             AND prev.term_number = t.term_number - 1
-# MAGIC             AND prev.term_ended_at IS NOT NULL
-# MAGIC       )
-# MAGIC   )
+# MAGIC   AND t.term_number = 1
+# MAGIC
 
 # COMMAND ----------
 
@@ -101,12 +92,12 @@ print(f"Silver : {S}*")
 
 # COMMAND ----------
 
-# MAGIC %md ## 4. subscription_terms
+# MAGIC %md ## 4. subscription_all_terms
 
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC CREATE OR REPLACE TABLE general_scratch_catalog.general_scratch.ed_silver_subscription_terms AS
+# MAGIC CREATE OR REPLACE TABLE general_scratch_catalog.general_scratch.ed_silver_subscription_all_terms AS
 # MAGIC SELECT
 # MAGIC     terms.subscription_id,
 # MAGIC     terms.subscription_term_id,
@@ -237,14 +228,66 @@ print(f"Silver : {S}*")
 
 # COMMAND ----------
 
-# MAGIC %md ## 8. current_periods (deprecated — no longer used)
+# MAGIC %md
+# MAGIC ## 8. subs_kafka__events
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC CREATE OR REPLACE TABLE general_scratch_catalog.general_scratch.ed_silver_subs_kafka__events AS
+# MAGIC SELECT
+# MAGIC     e.event_id,
+# MAGIC     e.event_name,
+# MAGIC     e.subscription_id,
+# MAGIC     e.common_id,
+# MAGIC     e.raw_occurred_at,
+# MAGIC     e.occurred_at,
+# MAGIC     e.old_renewal_at,
+# MAGIC     e.new_renewal_at,
+# MAGIC     e.current_term_end_at,
+# MAGIC     e.subscription_created_at,
+# MAGIC     e.changed_by,
+# MAGIC     e.reason,
+# MAGIC     e.state,
+# MAGIC     e.raw_state,
+# MAGIC     e.termination_type,
+# MAGIC     e.condition_id,
+# MAGIC     e.condition_name,
+# MAGIC     e.drug_id,
+# MAGIC     e.drug_name,
+# MAGIC     e.drug_strength,
+# MAGIC     e.monthly_dose,
+# MAGIC     e.plan_id,
+# MAGIC     e.plan_name,
+# MAGIC     e.new_plan_id,
+# MAGIC     e.old_plan_id,
+# MAGIC     e.amount_due,
+# MAGIC     e.attempt_number,
+# MAGIC     e.is_succeeded,
+# MAGIC     e.is_failed,
+# MAGIC     e.is_charge,
+# MAGIC     e.is_refund,
+# MAGIC     e.failure_reason,
+# MAGIC     e.cancel_at_current_term_end,
+# MAGIC     e.invoice_id,
+# MAGIC     e.order_id
+# MAGIC FROM general_scratch_catalog.general_scratch.ed_bronze_int_subs_kafka__events e
+# MAGIC WHERE e.subscription_id IN (
+# MAGIC     SELECT subscription_id
+# MAGIC     FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified
+# MAGIC )
+# MAGIC ORDER BY e.subscription_id, e.raw_occurred_at
+
+# COMMAND ----------
+
+# MAGIC %md ## 9. current_periods (deprecated — no longer used)
 # MAGIC -- current_periods was built for the invoice-based cohort (Milestone 1 v1).
 # MAGIC -- It is superseded by the terms-based cohort in subscriptions_qualified.
 # MAGIC -- Kept here for reference; do not run.
 
 # COMMAND ----------
 
-# MAGIC %md ## 9. subscription_term_start_labels (cancellation label)
+# MAGIC %md ## 10. subscription_term_start_labels (cancellation label)
 
 # COMMAND ----------
 
@@ -281,7 +324,7 @@ print(f"Silver : {S}*")
 
 # COMMAND ----------
 
-# MAGIC %md ## 10. subscriptions_churn
+# MAGIC %md ## 11. subscriptions_churn
 
 # COMMAND ----------
 
@@ -304,10 +347,11 @@ silver_tables = [
     "subscription_terms_qualified",
     "subscription_plan_types",
     "subscriptions",
-    "subscription_terms",
+    "subscription_all_terms",
     "subscription_plan_terms",
     # "subscription_charges",
     "subscription_invoices",
+    "subs_kafka__events",
     # "current_periods",    # deprecated
     "subscription_term_start_labels",
     # "subscriptions_churn",
