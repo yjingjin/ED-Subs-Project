@@ -1,9 +1,11 @@
 # Databricks notebook source
-# Sanity checks for ed_silver_subscription_terms_qualified and ed_silver_subscription_term_start_labels.
-# Run after build_silver.py to validate the cohort and label before EDA/modeling.
+# 01 — Cohort Overview
+# Validates the cohort and label tables, then provides high-level cohort summary stats.
+# Run after build_silver.py.
 #
-# ed_silver_subscription_terms_qualified contains only: subscription_id, subscription_term_id
-# Additional term attributes are joined from ed_bronze_subscription_terms as needed.
+# Sections:
+#   Sanity Checks  (1–10): validate cohort and label integrity
+#   Overview       (11–14): cohort size over time, label distribution, plan/drug mix, geography
 
 # COMMAND ----------
 
@@ -195,3 +197,74 @@ TERMS_B = f"{CATALOG}.{SCHEMA}.ed_bronze_subscription_terms"
 # MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified q
 # MAGIC LEFT JOIN general_scratch_catalog.general_scratch.ed_silver_subscription_term_start_labels l
 # MAGIC     ON q.subscription_term_id = l.subscription_term_id
+
+# COMMAND ----------
+# MAGIC %md ---
+# MAGIC ## Overview
+
+# COMMAND ----------
+# MAGIC %md ## 8. Cohort size over time — subscriptions started per month
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT
+# MAGIC     DATE_TRUNC('month', t.term_started_at) AS term_start_month,
+# MAGIC     COUNT(DISTINCT q.subscription_id)      AS n_subscriptions
+# MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified q
+# MAGIC JOIN general_scratch_catalog.general_scratch.ed_bronze_subscription_terms t
+# MAGIC     ON q.subscription_term_id = t.subscription_term_id
+# MAGIC GROUP BY 1
+# MAGIC ORDER BY 1
+
+# COMMAND ----------
+# MAGIC %md ## 9. Label distribution (30-day cancellation rate from term start)
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT
+# MAGIC     cancel_status,
+# MAGIC     is_cancelled,
+# MAGIC     COUNT(*)                                                    AS n,
+# MAGIC     ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 2)         AS pct
+# MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_term_start_labels
+# MAGIC GROUP BY 1, 2
+
+# COMMAND ----------
+# MAGIC %md ## 10. Plan and drug mix
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT
+# MAGIC     pt.drug_name,
+# MAGIC     pt.drug_strength,
+# MAGIC     pt.regimen,
+# MAGIC     pt.term_months,
+# MAGIC     COUNT(DISTINCT q.subscription_id)                          AS n_subscriptions,
+# MAGIC     ROUND(COUNT(DISTINCT q.subscription_id) * 100.0
+# MAGIC           / SUM(COUNT(DISTINCT q.subscription_id)) OVER (), 1) AS pct
+# MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified q
+# MAGIC JOIN general_scratch_catalog.general_scratch.ed_silver_subscription_plan_terms pt
+# MAGIC     ON q.subscription_id = pt.subscription_id
+# MAGIC WHERE pt.is_latest_plan_term = TRUE
+# MAGIC GROUP BY 1, 2, 3, 4
+# MAGIC ORDER BY 5 DESC
+
+# COMMAND ----------
+# MAGIC %md ## 11. Geography — subscriptions by user state
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT
+# MAGIC     s.user_state,
+# MAGIC     COUNT(DISTINCT q.subscription_id)                          AS n_subscriptions,
+# MAGIC     ROUND(COUNT(DISTINCT q.subscription_id) * 100.0
+# MAGIC           / SUM(COUNT(DISTINCT q.subscription_id)) OVER (), 1) AS pct
+# MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified q
+# MAGIC JOIN general_scratch_catalog.general_scratch.ed_silver_subscriptions s
+# MAGIC     ON q.subscription_id = s.subscription_id
+# MAGIC GROUP BY 1
+# MAGIC ORDER BY 2 DESC

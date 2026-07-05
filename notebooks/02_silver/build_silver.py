@@ -208,6 +208,8 @@ print(f"Silver : {S}*")
 # MAGIC     invoices.is_delinquent,
 # MAGIC     invoices.caused_cancellation,
 # MAGIC     invoices.is_latest_term_invoice,
+# MAGIC     invoices.visit_id,
+# MAGIC     invoices.prescription_id,
 # MAGIC     invoices.plan_id,
 # MAGIC     invoices.drug_id,
 # MAGIC     invoices.drug_name,

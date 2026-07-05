@@ -18,7 +18,7 @@ Core subscription record. One row per subscription.
 | -------------------------- | ------------- | ------------------------------------------------- |
 | subscription_id            | string (UUID) | Primary key                                       |
 | common_id                  | string (UUID) | Cross-table join key                              |
-| created_at                 | timestamp     | When the subscription was created                 |
+| created_at                 | timestamp     | When the user signed up for the subscription      |
 | status                     | string        | Current status: `active`, `canceled`, `paused`, … |
 | raw_subscription_type      | string        | Raw type from source system                       |
 | condition_id               | int           | 135 = erectile dysfunction                        |
@@ -37,7 +37,7 @@ Core subscription record. One row per subscription.
 | had_trial                  | bool          | Whether the subscription started with a trial     |
 | is_paid                    | bool          | Whether at least one payment has been made        |
 | is_activated               | bool          | Whether the subscription is activated             |
-| activated_at               | timestamp     | Activation timestamp                              |
+| activated_at               | timestamp     | Activation timestamp, same day as paid_at         |
 | is_trial_converted         | bool          | Whether the trial converted to paid               |
 | trial_converted_at         | timestamp     | Trial conversion timestamp                        |
 | user_subscription_number   | int           | Which subscription number this is for the user    |
