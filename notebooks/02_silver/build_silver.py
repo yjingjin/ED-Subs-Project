@@ -33,6 +33,13 @@ print(f"Silver : {S}*")
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC Qualified subscription terms are the first terms of activated subscriptions that started before June 1, 2026.
+# MAGIC
+# MAGIC Note: Unactivated subscriptions may still appear in the subscription_terms table, but their term_started_at value is null.
+
+# COMMAND ----------
+
 # MAGIC %sql
 # MAGIC -- Base cohort pool: all non-reactivated subscription terms started before the data cutoff.
 # MAGIC -- No fixed prediction point date — the rolling window logic applies per-observation filters on top.
@@ -44,8 +51,12 @@ print(f"Silver : {S}*")
 # MAGIC     DISTINCT t.subscription_id,
 # MAGIC     t.subscription_term_id
 # MAGIC FROM `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscription_terms` t
+# MAGIC JOIN `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscriptions` s
+# MAGIC on s.subscription_id = t.subscription_id
 # MAGIC WHERE t.term_started_at < '2026-06-01'
 # MAGIC   AND t.term_number = 1
+# MAGIC   AND s.is_paid = TRUE
+# MAGIC   AND s.is_activated = TRUE
 # MAGIC
 
 # COMMAND ----------
@@ -116,7 +127,15 @@ print(f"Silver : {S}*")
 # MAGIC     terms.is_refunded,
 # MAGIC     terms.refunded_at,
 # MAGIC     terms.cancel_requested_at,
-# MAGIC     terms.cancel_reason
+# MAGIC     terms.cancel_reason,
+# MAGIC     CASE
+# MAGIC         WHEN terms.cancel_requested_at < '2026-07-01' THEN TRUE
+# MAGIC         ELSE FALSE
+# MAGIC     END AS is_cancelled_before_cutoff,
+# MAGIC     CASE
+# MAGIC         WHEN terms.cancel_requested_at < '2026-07-01' THEN 'cancelled'
+# MAGIC         ELSE 'not_cancelled'
+# MAGIC     END AS cancel_status_before_cutoff
 # MAGIC FROM `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscription_terms` AS terms
 # MAGIC WHERE terms.subscription_id IN (
 # MAGIC     SELECT subscription_id
@@ -222,8 +241,8 @@ print(f"Silver : {S}*")
 # MAGIC FROM `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscription_invoices` AS invoices
 # MAGIC LEFT JOIN `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscription_plan_types` AS plan_types
 # MAGIC     ON invoices.plan_id = plan_types.plan_id
-# MAGIC WHERE invoices.subscription_id IN (
-# MAGIC     SELECT subscription_id
+# MAGIC WHERE invoices.subscription_term_id IN (
+# MAGIC     SELECT subscription_term_id
 # MAGIC     FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified
 # MAGIC )
 # MAGIC ORDER BY invoices.subscription_id, invoices.created_at
@@ -321,8 +340,6 @@ print(f"Silver : {S}*")
 # MAGIC     ON q.subscription_term_id = t.subscription_term_id
 # MAGIC JOIN general_scratch_catalog.general_scratch.ed_silver_subscriptions s
 # MAGIC     ON q.subscription_id = s.subscription_id
-# MAGIC    AND s.subs_is_activated = TRUE
-# MAGIC    AND s.subs_is_paid = TRUE
 
 # COMMAND ----------
 
