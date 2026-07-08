@@ -26,38 +26,34 @@
 
 ## Modeling (Milestone 1)
 
-**Prediction point (T):** `term_started_at::date` — the date the subscription term started. Features are frozen at T (all data up to and including T is used).
+**Qualified subscription terms**: 
+
+- The **first terms** of subscriptions
+    - Why exclude reactivated terms?
+    
+        Reactivation is recent product change and the **sample size is limited**. Including   them    - would mix different product states and make the sample less clean.
+
+- were **activated**, and
+
+- **started before June 1, 2026**
+
+    - Why require terms to start before June 1, 2026?
+
+        This ensures every included term has a full 30-day observation window. It also ensures the  churn outcome is fully observable as of today.
+
+**Preidction target**: cancellation in the next 30 days
+
+- Why cancellation instead of effective churn?
+
+    This analysis focuses on pre-churn behavior in the pre-reactivation product era, when   **cancellation almost certainly led to churn**. Therefore, the prediction target should be cancellation so that **action can be taken in time**.
+
+**Prediction point (T): Features are frozen at T (all data up to and including T is used).
 
 **Label window:** T+1, T+30 — the 30 days **after** T, excluding T itself.
 
 > Same-day cancellations (`cancel_requested_at = term_started_at::date`) are tracked separately as `cancelled_at_start` in the label table and excluded from model training (they are already-decided before the model could act).
 
-Cohort & Label Logic
-
-**Cohort:** all active, non-reactivated, activated subscription terms that started before the data cutoff (2026-06-01), filtered to `is_activated = TRUE AND is_paid = TRUE`.
-
-> Table: `ed_silver_subscription_terms_qualified`
-
-```sql
--- JOIN to ed_bronze_subscriptions WHERE is_paid = TRUE AND is_activated = TRUE
--- term_started_at < '2026-06-01'
--- term_number = 1  (first term only; reactivated terms excluded)
-```
-
-**Label:** three-way classification in `ed_silver_subscription_term_start_labels`:
-
-```
-cancel_status = 'cancelled_in_30_days'  if cancel_requested_at BETWEEN T+1 AND T+30
-cancel_status = 'cancelled_at_start'    if cancel_requested_at = T  (excluded from model training)
-cancel_status = 'not_cancelled'         otherwise
-
-is_cancelled = 1  if cancel_requested_at BETWEEN T AND T+30  (includes day 0, for EDA)
-is_cancelled = 0  otherwise
-
-Model training label: cancel_status IN ('cancelled_in_30_days', 'not_cancelled')
-```
-
-> `is_cancelled` includes day 0 to preserve fell-out context for EDA. Model training filters to `cancel_status != 'cancelled_at_start'`.
+![Labeling Logic](cohort_label_logic.png)
 
 **Voluntary churn:** churn driven by an explicit user cancellation request (`cancel_requested_at IS NOT NULL`).
 

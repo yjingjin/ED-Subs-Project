@@ -149,7 +149,158 @@ spark.conf.set("eda.plan_terms", PLAN_TERMS)
 
 # COMMAND ----------
 
-# MAGIC %md ## 5. Overall cancellation pattern — time from activation to cancel request (days)
+# MAGIC %md
+# MAGIC ## 5. Overall survival
+
+# COMMAND ----------
+
+# %pip install lifelines  # uncomment if lifelines is not installed on your cluster
+
+from lifelines import KaplanMeierFitter
+import matplotlib.pyplot as plt
+
+CATALOG    = "general_scratch_catalog"
+SCHEMA     = "general_scratch"
+QUAL       = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_terms_qualified"
+TERMS_B    = f"{CATALOG}.{SCHEMA}.ed_bronze_subscription_terms"
+PLAN_TERMS = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_plan_terms"
+
+df = spark.sql(f"""
+    SELECT
+        pt.term_months AS cadence,
+        DATEDIFF(DAY,
+            t.term_started_at::date,
+            COALESCE(t.cancel_requested_at::date, DATE '2026-07-02')
+        ) / 30.0 AS duration_months,
+        CASE WHEN t.cancel_requested_at IS NOT NULL THEN 1 ELSE 0 END AS cancelled
+    FROM {QUAL} q
+    JOIN {TERMS_B} t
+        ON q.subscription_term_id = t.subscription_term_id
+    JOIN {PLAN_TERMS} pt
+        ON q.subscription_term_id = pt.subscription_term_id
+        AND pt.is_latest_plan_term = TRUE
+    WHERE t.cancel_requested_at IS NULL
+       OR t.cancel_requested_at > t.term_started_at
+""").toPandas()
+
+fig, ax = plt.subplots(figsize=(10, 6))
+kmf = KaplanMeierFitter()
+colors = {1: "#2196F3", 3: "#FF9800", 6: "#4CAF50"}
+
+for cadence, group in df.groupby("cadence"):
+    kmf.fit(
+        group["duration_months"],
+        event_observed=group["cancelled"],
+        label=f"{cadence}-month plan (n={len(group):,})"
+    )
+    kmf.plot_survival_function(ax=ax, color=colors.get(cadence, "gray"), ci_show=True)
+
+ax.set_xlabel("Months since term start", fontsize=12)
+ax.set_ylabel("Proportion not cancelled", fontsize=12)
+ax.set_title("Survival Curve by Cadence", fontsize=14, fontweight="bold")
+ax.set_xlim(0, 12)
+ax.set_ylim(0.5, 1.0)
+ax.axvline(x=1, color="gray", linestyle="--", alpha=0.5, label="Month 1")
+ax.axvline(x=3, color="gray", linestyle=":",  alpha=0.5, label="Month 3")
+ax.axvline(x=6, color="gray", linestyle="-.", alpha=0.5, label="Month 6")
+ax.grid(True, alpha=0.3)
+ax.legend(fontsize=10)
+plt.tight_layout()
+plt.show()
+
+# COMMAND ----------
+
+df = spark.sql(f"""
+    SELECT
+        pt.drug_name,
+        DATEDIFF(DAY,
+            t.term_started_at::date,
+            COALESCE(t.cancel_requested_at::date, DATE '2026-07-02')
+        ) / 30.0 AS duration_months,
+        CASE WHEN t.cancel_requested_at IS NOT NULL THEN 1 ELSE 0 END AS cancelled
+    FROM {QUAL} q
+    JOIN {TERMS_B} t
+        ON q.subscription_term_id = t.subscription_term_id
+    JOIN {PLAN_TERMS} pt
+        ON q.subscription_term_id = pt.subscription_term_id
+        AND pt.is_latest_plan_term = TRUE
+    WHERE t.cancel_requested_at IS NULL
+       OR t.cancel_requested_at > t.term_started_at
+""").toPandas()
+
+fig, ax = plt.subplots(figsize=(10, 6))
+kmf = KaplanMeierFitter()
+colors = {"sildenafil": "#2196F3", "tadalafil (cialis)": "#FF9800"}
+
+for drug, group in df.groupby("drug_name"):
+    kmf.fit(
+        group["duration_months"],
+        event_observed=group["cancelled"],
+        label=f"{drug} (n={len(group):,})"
+    )
+    kmf.plot_survival_function(ax=ax, color=colors.get(drug, "gray"), ci_show=True)
+
+ax.set_xlabel("Months since term start", fontsize=12)
+ax.set_ylabel("Proportion not cancelled", fontsize=12)
+ax.set_title("Survival Curve by Drug Name", fontsize=14, fontweight="bold")
+ax.set_xlim(0, 12)
+ax.set_ylim(0.5, 1.0)
+ax.axvline(x=1, color="gray", linestyle="--", alpha=0.5, label="Month 1")
+ax.axvline(x=3, color="gray", linestyle=":",  alpha=0.5, label="Month 3")
+ax.axvline(x=6, color="gray", linestyle="-.", alpha=0.5, label="Month 6")
+ax.grid(True, alpha=0.3)
+ax.legend(fontsize=10)
+plt.tight_layout()
+plt.show()
+
+# COMMAND ----------
+
+df = spark.sql(f"""
+    SELECT
+        pt.regimen,
+        DATEDIFF(DAY,
+            t.term_started_at::date,
+            COALESCE(t.cancel_requested_at::date, DATE '2026-07-02')
+        ) / 30.0 AS duration_months,
+        CASE WHEN t.cancel_requested_at IS NOT NULL THEN 1 ELSE 0 END AS cancelled
+    FROM {QUAL} q
+    JOIN {TERMS_B} t
+        ON q.subscription_term_id = t.subscription_term_id
+    JOIN {PLAN_TERMS} pt
+        ON q.subscription_term_id = pt.subscription_term_id
+        AND pt.is_latest_plan_term = TRUE
+    WHERE t.cancel_requested_at IS NULL
+       OR t.cancel_requested_at > t.term_started_at
+""").toPandas()
+
+fig, ax = plt.subplots(figsize=(10, 6))
+kmf = KaplanMeierFitter()
+colors = {"DAILY": "#4CAF50", "AS_NEEDED": "#2196F3"}
+
+for regimen, group in df.groupby("regimen"):
+    kmf.fit(
+        group["duration_months"],
+        event_observed=group["cancelled"],
+        label=f"{regimen} (n={len(group):,})"
+    )
+    kmf.plot_survival_function(ax=ax, color=colors.get(regimen, "gray"), ci_show=True)
+
+ax.set_xlabel("Months since term start", fontsize=12)
+ax.set_ylabel("Proportion not cancelled", fontsize=12)
+ax.set_title("Survival Curve by Regimen", fontsize=14, fontweight="bold")
+ax.set_xlim(0, 12)
+ax.set_ylim(0.5, 1.0)
+ax.axvline(x=1, color="gray", linestyle="--", alpha=0.5, label="Month 1")
+ax.axvline(x=3, color="gray", linestyle=":",  alpha=0.5, label="Month 3")
+ax.axvline(x=6, color="gray", linestyle="-.", alpha=0.5, label="Month 6")
+ax.grid(True, alpha=0.3)
+ax.legend(fontsize=10)
+plt.tight_layout()
+plt.show()
+
+# COMMAND ----------
+
+# MAGIC %md ## 6. Overall cancellation timing — time from activation to cancel request (days)
 
 # COMMAND ----------
 
@@ -212,12 +363,12 @@ spark.conf.set("eda.plan_terms", PLAN_TERMS)
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### 5.1 Cadence = 1 month
+# MAGIC ### 6.1 Cadence = 1 month
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC 1-month plan users cancel on day 0 and day 23 - when they receive a refill reminder (Conditions subs users receive the upcoming refill / next-fill reminder when a fill is due within the next 7 days.)
+# MAGIC 1-month plan users are more likely to cancel on day 0 and day 23 - when they receive a refill reminder (Conditions subs users receive the upcoming refill / next-fill reminder when a fill is due within the next 7 days.)
 
 # COMMAND ----------
 
@@ -230,7 +381,7 @@ spark.conf.set("eda.plan_terms", PLAN_TERMS)
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### 5.2 Cadence = 3 month
+# MAGIC ### 6.2 Cadence = 3 month
 
 # COMMAND ----------
 
@@ -248,7 +399,7 @@ spark.conf.set("eda.plan_terms", PLAN_TERMS)
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### 5.3 Cadence = 6 month
+# MAGIC ### 6.3 Cadence = 6 month
 
 # COMMAND ----------
 
@@ -270,7 +421,7 @@ spark.conf.set("eda.plan_terms", PLAN_TERMS)
 
 # COMMAND ----------
 
-# MAGIC %md ## 6. What plans do fell-out subscribers would like to have?
+# MAGIC %md ## 7. What plans do fell-out subscribers would like to have?
 
 # COMMAND ----------
 
@@ -318,7 +469,7 @@ spark.conf.set("eda.plan_terms", PLAN_TERMS)
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### 6.1 Drug name
+# MAGIC ### 7.1 Drug name
 # MAGIC
 # MAGIC Compared with activated subscribers, fell-out subscribers are more likely to be on Sildenafil.
 
@@ -341,7 +492,7 @@ spark.conf.set("eda.plan_terms", PLAN_TERMS)
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### 6.2 Regimen
+# MAGIC ### 7.2 Regimen
 
 # COMMAND ----------
 
@@ -367,7 +518,7 @@ spark.conf.set("eda.plan_terms", PLAN_TERMS)
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### 6.3 Cadence
+# MAGIC ### 7.3 Cadence
 
 # COMMAND ----------
 
@@ -393,7 +544,7 @@ spark.conf.set("eda.plan_terms", PLAN_TERMS)
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### 6.4 Monthly doses
+# MAGIC ### 7.4 Monthly doses
 
 # COMMAND ----------
 
@@ -418,7 +569,7 @@ spark.conf.set("eda.plan_terms", PLAN_TERMS)
 
 # COMMAND ----------
 
-# MAGIC %md ## 7. Fell-out subscribers — did they have an Rx written?
+# MAGIC %md ## 8. Fell-out subscribers — did they have an Rx written?
 
 # COMMAND ----------
 
@@ -438,7 +589,7 @@ spark.conf.set("eda.plan_terms", PLAN_TERMS)
 
 # COMMAND ----------
 
-# MAGIC %md ## 8. Fell-out subscribers — did they have an order placed?
+# MAGIC %md ## 9. Fell-out subscribers — did they have an order placed?
 
 # COMMAND ----------
 
@@ -463,7 +614,7 @@ spark.conf.set("eda.plan_terms", PLAN_TERMS)
 
 # COMMAND ----------
 
-# MAGIC %md ## 9. Comparison: fell-out vs activated — acquisition channel and platform
+# MAGIC %md ## 10. Comparison: fell-out vs activated — acquisition channel and platform
 
 # COMMAND ----------
 

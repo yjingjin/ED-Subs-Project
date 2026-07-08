@@ -1,18 +1,11 @@
 # Databricks notebook source
-# 03 — Cancellation Feature EDA (with statistical tests)
-#
-# Cohort: activated, non-reactivated subscribers (ed_silver_subscription_term_start_labels)
-# Label: cancel_status — cancelled_in_30_days vs not_cancelled
-#
-# NOTE: Sections 2–14 exclude day-0 cancellations (cancel_status = 'cancelled_at_start').
-# Reason: same-day cancellations occur before the model could act and do not represent
-# preventable churn. Including them would inflate cancel rates and bias feature analysis
-# toward features correlated with low activation quality rather than true churn intent.
-# Section 1 is the only section that reports all three cancel_status values.
-#
-# Statistical test used: Chi-square test of independence (scipy.stats.chi2_contingency).
-# Null hypothesis: cancellation rate is the same across all segments.
-# p < 0.05 → the feature is statistically significantly associated with cancellation.
+# MAGIC %md
+# MAGIC # 3 First 30-day Cancellation Feature EDA
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC This is the **Phase I EDA** for cancellation, where we **set the prediction point (T) at the start of the subscription**. In Phase II, we will explore additional features using rolling prediction points.
 
 # COMMAND ----------
 
@@ -44,6 +37,7 @@ def chi2_test(df, n_col="n_subscribers", cancelled_col="n_cancelled"):
     print(f"Chi-square: {chi2:.2f} | df: {dof} | p-value: {p:.4f} | {sig}")
 
 # COMMAND ----------
+
 # MAGIC %md ---
 # MAGIC ## 1. Overall cancellation rate (all cancel_status values)
 
@@ -59,15 +53,15 @@ def chi2_test(df, n_col="n_subscribers", cancelled_col="n_cancelled"):
 # MAGIC ORDER BY 2 DESC
 
 # COMMAND ----------
+
 # MAGIC %md
-# MAGIC **Findings:** []
-# MAGIC
 # MAGIC `cancelled_in_30_days` is the model target. `cancelled_at_start` (day-0 cancellations) are
-# MAGIC excluded from sections 2–14 as they are not preventable through a churn prevention model.
+# MAGIC excluded from sections 2–13 as they are not preventable through a churn prevention model.
 
 # COMMAND ----------
+
 # MAGIC %md ---
-# MAGIC ## 2. Cancellation rate by cadence (term length)
+# MAGIC ## 2. Cancellation rate by cadence (billing cycle length)
 # MAGIC *(excludes day-0 cancellations)*
 
 # COMMAND ----------
@@ -102,14 +96,13 @@ df2 = spark.sql(f"""
 chi2_test(df2)
 
 # COMMAND ----------
+
 # MAGIC %md
-# MAGIC **Findings:** []
-# MAGIC
-# MAGIC 1-month plan subscribers cancel at a much higher rate than 3- or 6-month subscribers.
-# MAGIC The shorter the commitment, the lower the friction to cancel.
-# MAGIC **Cadence is expected to be one of the strongest features in the model.**
+# MAGIC **Findings:** 1-month plan subscribers cancel at a much higher 30-day rate than 3- or 6-month subscribers.
+# MAGIC Since subscriptions are auto-renewing, shorter-plan subscribers face a renewal cycle much sooner. To avoid an unwanted charge, they are more likely to cancel proactively within the first 30 days 
 
 # COMMAND ----------
+
 # MAGIC %md ---
 # MAGIC ## 3. Cancellation rate by drug name
 # MAGIC *(excludes day-0 cancellations)*
@@ -146,10 +139,50 @@ df3 = spark.sql(f"""
 chi2_test(df3)
 
 # COMMAND ----------
+
 # MAGIC %md
-# MAGIC **Findings:** []
+# MAGIC **Findings:** 
+# MAGIC Sildenafil users are more likely to cancel within 30 days after the start of subcrition. Sildenafil is as-needed only, so subscribers use it situationally and may feel lower perceived dependency on the medication and less routine reinforcement of the subscription value. In contrast, Tadalafil offers both daily and as-needed dosing options — daily Tadalafil users in particular build a consistent routine, which likely increases retention. 
 
 # COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT
+# MAGIC     pt.drug_name,
+# MAGIC     pt.regimen,
+# MAGIC     COUNT(DISTINCT l.subscription_id)                        AS n_subscribers,
+# MAGIC     SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END) AS n_cancelled,
+# MAGIC     ROUND(
+# MAGIC         SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1.0 ELSE 0 END)
+# MAGIC         / COUNT(DISTINCT l.subscription_id) * 100, 1)        AS cancel_rate_pct
+# MAGIC FROM ${eda.labels} l
+# MAGIC JOIN ${eda.plan_terms} pt
+# MAGIC     ON l.subscription_term_id = pt.subscription_term_id
+# MAGIC     AND pt.is_latest_plan_term = TRUE
+# MAGIC WHERE l.cancel_status != 'cancelled_at_start'
+# MAGIC GROUP BY 1,2
+# MAGIC ORDER BY 5 DESC
+
+# COMMAND ----------
+
+df3_1 = spark.sql(f"""
+    SELECT pt.drug_name,
+           COUNT(DISTINCT l.subscription_id) AS n_subscribers,
+           SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END) AS n_cancelled
+    FROM {LABELS} l
+    JOIN {PLAN_TERMS} pt ON l.subscription_term_id = pt.subscription_term_id AND pt.is_latest_plan_term = TRUE
+    WHERE l.cancel_status != 'cancelled_at_start' AND regimen = 'AS_NEEDED'
+    GROUP BY 1
+""").toPandas()
+chi2_test(df3_1)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC Further segmented by both drug name and regimen, as-needed users have higher cancellation rates than daily users. **This suggests that the observed drug effect is confounded by regimen.**
+
+# COMMAND ----------
+
 # MAGIC %md ---
 # MAGIC ## 4. Cancellation rate by regimen
 # MAGIC *(excludes day-0 cancellations)*
@@ -186,13 +219,15 @@ df4 = spark.sql(f"""
 chi2_test(df4)
 
 # COMMAND ----------
+
 # MAGIC %md
-# MAGIC **Findings:** []
+# MAGIC **Findings:**
 # MAGIC
-# MAGIC AS_NEEDED (on-demand) users tend to cancel more than DAILY users. Daily dosing implies
+# MAGIC As-needed (on-demand) users tend to cancel more than dailu users. Daily dosing implies
 # MAGIC a stronger treatment commitment and routine, which may correlate with lower churn.
 
 # COMMAND ----------
+
 # MAGIC %md ---
 # MAGIC ## 5. Cancellation rate by drug strength
 # MAGIC *(excludes day-0 cancellations)*
@@ -229,10 +264,54 @@ df5 = spark.sql(f"""
 chi2_test(df5)
 
 # COMMAND ----------
-# MAGIC %md
-# MAGIC **Findings:** []
+
+# MAGIC %sql
+# MAGIC SELECT
+# MAGIC     CASE
+# MAGIC         WHEN pt.drug_strength IN ('2.5mg', '5mg')         THEN 'low (≤5mg)'
+# MAGIC         WHEN pt.drug_strength IN ('10mg', '20mg', '25mg') THEN 'mid (10–25mg)'
+# MAGIC         WHEN pt.drug_strength IN ('50mg', '100mg')        THEN 'high (≥50mg)'
+# MAGIC         ELSE pt.drug_strength
+# MAGIC     END AS strength_group,
+# MAGIC     COUNT(DISTINCT l.subscription_id)                        AS n_subscribers,
+# MAGIC     SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END) AS n_cancelled,
+# MAGIC     ROUND(
+# MAGIC         SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1.0 ELSE 0 END)
+# MAGIC         / COUNT(DISTINCT l.subscription_id) * 100, 1)        AS cancel_rate_pct
+# MAGIC FROM ${eda.labels} l
+# MAGIC JOIN ${eda.plan_terms} pt
+# MAGIC     ON l.subscription_term_id = pt.subscription_term_id
+# MAGIC     AND pt.is_latest_plan_term = TRUE
+# MAGIC WHERE l.cancel_status != 'cancelled_at_start'
+# MAGIC GROUP BY 1
+# MAGIC ORDER BY 4 DESC
 
 # COMMAND ----------
+
+df5_1 = spark.sql(f"""
+    SELECT  
+        CASE
+            WHEN pt.drug_strength IN ('2.5mg', '5mg')         THEN 'low (≤5mg)'
+            WHEN pt.drug_strength IN ('10mg', '20mg', '25mg') THEN 'mid (10–25mg)'
+            WHEN pt.drug_strength IN ('50mg', '100mg')        THEN 'high (≥50mg)'
+            ELSE pt.drug_strength
+        END AS strength_group,
+           COUNT(DISTINCT l.subscription_id) AS n_subscribers,
+           SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END) AS n_cancelled
+    FROM {LABELS} l
+    JOIN {PLAN_TERMS} pt ON l.subscription_term_id = pt.subscription_term_id AND pt.is_latest_plan_term = TRUE
+    WHERE l.cancel_status != 'cancelled_at_start'
+    GROUP BY 1
+""").toPandas()
+chi2_test(df5_1)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC **Findings:** Drug strength is related to cancellation. Low-strength users have lower cancellation rate then mid- and high-strength users.
+
+# COMMAND ----------
+
 # MAGIC %md ---
 # MAGIC ## 6. Cancellation rate by monthly dose
 # MAGIC *(excludes day-0 cancellations)*
@@ -269,61 +348,68 @@ df6 = spark.sql(f"""
 chi2_test(df6)
 
 # COMMAND ----------
-# MAGIC %md
-# MAGIC **Findings:** []
-
-# COMMAND ----------
-# MAGIC %md ---
-# MAGIC ## 7. Cancellation rate by plan change count
-# MAGIC *(excludes day-0 cancellations)*
-
-# COMMAND ----------
 
 # MAGIC %sql
-# MAGIC WITH plan_change_counts AS (
-# MAGIC     SELECT subscription_term_id,
-# MAGIC            COUNT(*) - 1 AS plan_change_count
-# MAGIC     FROM ${eda.plan_terms}
-# MAGIC     GROUP BY 1
-# MAGIC )
 # MAGIC SELECT
-# MAGIC     pc.plan_change_count,
+# MAGIC     CASE
+# MAGIC         WHEN pt.monthly_dose <= 8  THEN 'low (≤8/mo)'
+# MAGIC         WHEN pt.monthly_dose <= 16 THEN 'mid (9–16/mo)'
+# MAGIC         WHEN pt.monthly_dose = 30  THEN 'high (30/mo — daily)'
+# MAGIC         ELSE CAST(pt.monthly_dose AS STRING)
+# MAGIC     END AS dose_group,
 # MAGIC     COUNT(DISTINCT l.subscription_id)                        AS n_subscribers,
 # MAGIC     SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END) AS n_cancelled,
 # MAGIC     ROUND(
 # MAGIC         SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1.0 ELSE 0 END)
 # MAGIC         / COUNT(DISTINCT l.subscription_id) * 100, 1)        AS cancel_rate_pct
 # MAGIC FROM ${eda.labels} l
-# MAGIC JOIN plan_change_counts pc ON l.subscription_term_id = pc.subscription_term_id
+# MAGIC JOIN ${eda.plan_terms} pt
+# MAGIC     ON l.subscription_term_id = pt.subscription_term_id
+# MAGIC     AND pt.is_latest_plan_term = TRUE
 # MAGIC WHERE l.cancel_status != 'cancelled_at_start'
 # MAGIC GROUP BY 1
-# MAGIC ORDER BY 1
+# MAGIC ORDER BY 4 DESC
 
 # COMMAND ----------
 
-df7 = spark.sql(f"""
-    WITH plan_change_counts AS (
-        SELECT subscription_term_id, COUNT(*) - 1 AS plan_change_count
-        FROM {PLAN_TERMS} GROUP BY 1
-    )
-    SELECT pc.plan_change_count,
-           COUNT(DISTINCT l.subscription_id) AS n_subscribers,
-           SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END) AS n_cancelled
+df6_1 = spark.sql(f"""
+    SELECT
+        CASE
+            WHEN pt.monthly_dose <= 8  THEN 'low'
+            WHEN pt.monthly_dose <= 16 THEN 'mid'
+            WHEN pt.monthly_dose = 30  THEN 'high'
+            ELSE CAST(pt.monthly_dose AS STRING)
+        END AS dose_group,
+        COUNT(DISTINCT l.subscription_id) AS n_subscribers,
+        SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END) AS n_cancelled
     FROM {LABELS} l
-    JOIN plan_change_counts pc ON l.subscription_term_id = pc.subscription_term_id
+    JOIN {PLAN_TERMS} pt
+        ON l.subscription_term_id = pt.subscription_term_id
+        AND pt.is_latest_plan_term = TRUE
     WHERE l.cancel_status != 'cancelled_at_start'
     GROUP BY 1
 """).toPandas()
-chi2_test(df7)
+
+chi2_test(df6_1)
 
 # COMMAND ----------
+
 # MAGIC %md
-# MAGIC **Findings:** []
-# MAGIC
-# MAGIC Subscribers who change plans are more engaged — they are actively optimizing their treatment
-# MAGIC rather than passively continuing. This tends to correlate with lower cancel rates.
+# MAGIC **Findings:** Lower monthly dose is associated with higher cancellation. Daily subscribers (30 doses/mo) cancel at less than half the rate of the lowest-dose group — consistent with the regimen finding that daily dosing builds a routine that reinforces retention.
 
 # COMMAND ----------
+
+# MAGIC %md ---
+# MAGIC ## 7. Cancellation rate by plan change count
+# MAGIC *(excludes day-0 cancellations)*
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC **Note:** Plan changes within a subscription term **always occur after term_started_at** (our EDA prediction point). This feature will become meaningful in rolling window modeling where the prediction point is mid-term, allowing plan changes that occurred before the scoring date to be counted.
+
+# COMMAND ----------
+
 # MAGIC %md ---
 # MAGIC ## 8. Cancellation rate by payment failure history
 # MAGIC *(excludes day-0 cancellations)*
@@ -332,9 +418,13 @@ chi2_test(df7)
 
 # MAGIC %sql
 # MAGIC WITH invoice_stats AS (
-# MAGIC     SELECT subscription_term_id,
-# MAGIC            SUM(CASE WHEN is_failed = TRUE THEN 1 ELSE 0 END) AS failed_invoice_count
-# MAGIC     FROM ${eda.invoices}
+# MAGIC     SELECT l.subscription_term_id,
+# MAGIC            SUM(CASE WHEN i.is_failed = TRUE THEN 1 ELSE 0 END) AS failed_invoice_count
+# MAGIC     FROM ${eda.invoices} i
+# MAGIC     JOIN ${eda.labels} l
+# MAGIC     ON l.subscription_term_id = i.subscription_term_id
+# MAGIC     WHERE i.created_at <= l.term_started_at
+# MAGIC         AND (i.failed_at is null OR i.failed_at <= l.term_started_at)
 # MAGIC     GROUP BY 1
 # MAGIC )
 # MAGIC SELECT
@@ -352,115 +442,13 @@ chi2_test(df7)
 
 # COMMAND ----------
 
-df8 = spark.sql(f"""
-    WITH invoice_stats AS (
-        SELECT subscription_term_id,
-               SUM(CASE WHEN is_failed = TRUE THEN 1 ELSE 0 END) AS failed_invoice_count
-        FROM {INVOICES} GROUP BY 1
-    )
-    SELECT ist.failed_invoice_count,
-           COUNT(DISTINCT l.subscription_id) AS n_subscribers,
-           SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END) AS n_cancelled
-    FROM {LABELS} l
-    JOIN invoice_stats ist ON l.subscription_term_id = ist.subscription_term_id
-    WHERE l.cancel_status != 'cancelled_at_start'
-    GROUP BY 1
-""").toPandas()
-chi2_test(df8)
-
-# COMMAND ----------
 # MAGIC %md
-# MAGIC **Findings:** []
+# MAGIC Very few subscriptions show payment failure at activation, which makes sense because activation requires a successful payment.
 
 # COMMAND ----------
+
 # MAGIC %md ---
-# MAGIC ## 9. Cancellation rate by delinquency
-# MAGIC *(excludes day-0 cancellations)*
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC SELECT
-# MAGIC     t.is_delinquent,
-# MAGIC     COUNT(DISTINCT l.subscription_id)                        AS n_subscribers,
-# MAGIC     SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END) AS n_cancelled,
-# MAGIC     ROUND(
-# MAGIC         SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1.0 ELSE 0 END)
-# MAGIC         / COUNT(DISTINCT l.subscription_id) * 100, 1)        AS cancel_rate_pct
-# MAGIC FROM ${eda.labels} l
-# MAGIC JOIN ${eda.terms} t ON l.subscription_term_id = t.subscription_term_id
-# MAGIC WHERE l.cancel_status != 'cancelled_at_start'
-# MAGIC GROUP BY 1
-# MAGIC ORDER BY 1
-
-# COMMAND ----------
-
-df9 = spark.sql(f"""
-    SELECT t.is_delinquent,
-           COUNT(DISTINCT l.subscription_id) AS n_subscribers,
-           SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END) AS n_cancelled
-    FROM {LABELS} l
-    JOIN {TERMS} t ON l.subscription_term_id = t.subscription_term_id
-    WHERE l.cancel_status != 'cancelled_at_start'
-    GROUP BY 1
-""").toPandas()
-chi2_test(df9)
-
-# COMMAND ----------
-# MAGIC %md
-# MAGIC **Findings:** []
-
-# COMMAND ----------
-# MAGIC %md ---
-# MAGIC ## 10. Cancellation rate by order count (fulfillment behavior)
-# MAGIC *(excludes day-0 cancellations)*
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC WITH order_counts AS (
-# MAGIC     SELECT inv.subscription_term_id,
-# MAGIC            COUNT(DISTINCT inv.invoice_id) AS order_count
-# MAGIC     FROM ${eda.invoices} inv
-# MAGIC     GROUP BY 1
-# MAGIC )
-# MAGIC SELECT
-# MAGIC     oc.order_count,
-# MAGIC     COUNT(DISTINCT l.subscription_id)                        AS n_subscribers,
-# MAGIC     SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END) AS n_cancelled,
-# MAGIC     ROUND(
-# MAGIC         SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1.0 ELSE 0 END)
-# MAGIC         / COUNT(DISTINCT l.subscription_id) * 100, 1)        AS cancel_rate_pct
-# MAGIC FROM ${eda.labels} l
-# MAGIC JOIN order_counts oc ON l.subscription_term_id = oc.subscription_term_id
-# MAGIC WHERE l.cancel_status != 'cancelled_at_start'
-# MAGIC GROUP BY 1
-# MAGIC ORDER BY 1
-
-# COMMAND ----------
-
-df10 = spark.sql(f"""
-    WITH order_counts AS (
-        SELECT subscription_term_id, COUNT(DISTINCT invoice_id) AS order_count
-        FROM {INVOICES} GROUP BY 1
-    )
-    SELECT oc.order_count,
-           COUNT(DISTINCT l.subscription_id) AS n_subscribers,
-           SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END) AS n_cancelled
-    FROM {LABELS} l
-    JOIN order_counts oc ON l.subscription_term_id = oc.subscription_term_id
-    WHERE l.cancel_status != 'cancelled_at_start'
-    GROUP BY 1
-""").toPandas()
-chi2_test(df10)
-
-# COMMAND ----------
-# MAGIC %md
-# MAGIC **Findings:** []
-
-# COMMAND ----------
-# MAGIC %md ---
-# MAGIC ## 11. Cancellation rate by acquisition channel
+# MAGIC ## 9. Cancellation rate by acquisition channel
 # MAGIC *(excludes day-0 cancellations)*
 
 # COMMAND ----------
@@ -493,10 +481,60 @@ df11 = spark.sql(f"""
 chi2_test(df11)
 
 # COMMAND ----------
-# MAGIC %md
-# MAGIC **Findings:** []
+
+# MAGIC %sql
+# MAGIC SELECT
+# MAGIC     CASE
+# MAGIC         WHEN s.first_channel_grouping IN ('organic search', 'paid search')
+# MAGIC             THEN 'active_search'
+# MAGIC         WHEN s.first_channel_grouping IN ('direct', 'crm')
+# MAGIC             THEN 're_engaged'
+# MAGIC         ELSE 'unknown_other'
+# MAGIC     END AS channel_group,
+# MAGIC     COUNT(DISTINCT l.subscription_id)                        AS n_subscribers,
+# MAGIC     SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END) AS n_cancelled,
+# MAGIC     ROUND(
+# MAGIC         SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1.0 ELSE 0 END)
+# MAGIC         / COUNT(DISTINCT l.subscription_id) * 100, 1)        AS cancel_rate_pct
+# MAGIC FROM ${eda.labels} l
+# MAGIC JOIN ${eda.subs} s ON l.subscription_id = s.subscription_id
+# MAGIC WHERE l.cancel_status != 'cancelled_at_start'
+# MAGIC GROUP BY 1
+# MAGIC ORDER BY 4 DESC
 
 # COMMAND ----------
+
+from scipy.stats import chi2_contingency
+
+df = spark.sql(f"""
+    SELECT
+        CASE
+            WHEN s.first_channel_grouping IN ('organic search', 'paid search')
+                THEN 'active_search'
+            WHEN s.first_channel_grouping IN ('direct', 'crm')
+                THEN 're_engaged'
+            ELSE 'unknown_other'
+        END AS channel_group,
+        COUNT(DISTINCT l.subscription_id) AS n_subscribers,
+        SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END) AS n_cancelled
+    FROM {LABELS} l
+    JOIN {SUBS} s ON l.subscription_id = s.subscription_id
+    WHERE l.cancel_status != 'cancelled_at_start'
+    GROUP BY 1
+""").toPandas()
+
+table = [[r["n_cancelled"], r["n_subscribers"] - r["n_cancelled"]] for _, r in df.iterrows()]
+chi2, p, dof, _ = chi2_contingency(table)
+sig = "✓ Significant (p < 0.05)" if p < 0.05 else "✗ Not significant (p ≥ 0.05)"
+print(f"Chi-square: {chi2:.2f} | df: {dof} | p-value: {p:.4f} | {sig}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC **Findings:** Users acquired through active search channels, including paid and organic search, have higher cancellation rates than re-engaged users from direct and CRM channels. Users acquired through unknown or other sources have the highest cancellation rates.
+
+# COMMAND ----------
+
 # MAGIC %md ---
 # MAGIC ## 12. Cancellation rate by platform
 # MAGIC *(excludes day-0 cancellations)*
@@ -531,10 +569,12 @@ df12 = spark.sql(f"""
 chi2_test(df12)
 
 # COMMAND ----------
+
 # MAGIC %md
-# MAGIC **Findings:** []
+# MAGIC **Findings:** acquisition chanel has no impact on cancellation.
 
 # COMMAND ----------
+
 # MAGIC %md ---
 # MAGIC ## 13. Cancellation rate by user state (states with ≥ 100 subscribers)
 # MAGIC *(excludes day-0 cancellations)*
@@ -571,53 +611,6 @@ df13 = spark.sql(f"""
 chi2_test(df13)
 
 # COMMAND ----------
+
 # MAGIC %md
-# MAGIC **Findings:** []
-
-# COMMAND ----------
-# MAGIC %md ---
-# MAGIC ## 14. Days to cancel distribution by cadence
-# MAGIC *(excludes day-0 cancellations — cancelled_in_30_days only)*
-# MAGIC
-# MAGIC Statistical test: Kruskal-Wallis test (non-parametric comparison of distributions across cadence groups).
-# MAGIC Null hypothesis: the distribution of days-to-cancel is the same across all cadence groups.
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC SELECT
-# MAGIC     pt.term_months                                               AS cadence,
-# MAGIC     DATEDIFF(DAY, l.prediction_point, l.cancel_requested_at)    AS days_to_cancel,
-# MAGIC     COUNT(*)                                                     AS n,
-# MAGIC     ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY pt.term_months), 1) AS pct_within_cadence
-# MAGIC FROM ${eda.labels} l
-# MAGIC JOIN ${eda.plan_terms} pt
-# MAGIC     ON l.subscription_term_id = pt.subscription_term_id
-# MAGIC     AND pt.is_latest_plan_term = TRUE
-# MAGIC WHERE l.cancel_status = 'cancelled_in_30_days'
-# MAGIC GROUP BY 1, 2
-# MAGIC ORDER BY 1, 2
-
-# COMMAND ----------
-
-df14 = spark.sql(f"""
-    SELECT pt.term_months AS cadence,
-           DATEDIFF(DAY, l.prediction_point, l.cancel_requested_at) AS days_to_cancel
-    FROM {LABELS} l
-    JOIN {PLAN_TERMS} pt ON l.subscription_term_id = pt.subscription_term_id AND pt.is_latest_plan_term = TRUE
-    WHERE l.cancel_status = 'cancelled_in_30_days'
-""").toPandas()
-
-groups = [grp["days_to_cancel"].dropna().tolist() for _, grp in df14.groupby("cadence")]
-if len(groups) >= 2:
-    stat, p = kruskal(*groups)
-    sig = "✓ Significant (p < 0.05)" if p < 0.05 else "✗ Not significant (p ≥ 0.05)"
-    print(f"Kruskal-Wallis H: {stat:.2f} | p-value: {p:.4f} | {sig}")
-
-# COMMAND ----------
-# MAGIC %md
-# MAGIC **Findings:** []
-# MAGIC
-# MAGIC Cancellation timing differs by cadence — 1-month plan subscribers tend to cancel around the
-# MAGIC refill reminder window (~day 23), while 3-month and 6-month subscribers cancel later in the term.
-# MAGIC This suggests that reminders and engagement touchpoints may need to be cadence-specific.
+# MAGIC **Findings:** Cancellation rates vary across user states.

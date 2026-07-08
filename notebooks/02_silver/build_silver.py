@@ -34,9 +34,11 @@ print(f"Silver : {S}*")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC Qualified subscription terms are the first terms of activated subscriptions that started before June 1, 2026.
+# MAGIC Qualified subscription terms are the **first terms** of subscriptions that:
 # MAGIC
-# MAGIC Note: Unactivated subscriptions may still appear in the subscription_terms table, but their term_started_at value is null.
+# MAGIC - were **activated**, and
+# MAGIC
+# MAGIC - **started before June 1, 2026**
 
 # COMMAND ----------
 
