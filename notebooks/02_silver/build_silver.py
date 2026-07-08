@@ -322,18 +322,18 @@ print(f"Silver : {S}*")
 # MAGIC SELECT
 # MAGIC     q.subscription_id,
 # MAGIC     q.subscription_term_id,
-# MAGIC     t.term_started_at                               AS prediction_point,
-# MAGIC     DATEADD(DAY, 29, t.term_started_at)             AS label_window_end,
-# MAGIC     t.cancel_requested_at,
+# MAGIC     t.term_started_at::date AS term_started_at,
+# MAGIC     DATEADD(DAY, 1, t.term_started_at::date)  AS day_1_after_start,
+# MAGIC     DATEADD(DAY, 30, t.term_started_at::date) AS day_30_after_start,  
+# MAGIC     t.cancel_requested_at::date AS cancel_requested_at,
 # MAGIC     CASE
-# MAGIC         WHEN t.cancel_requested_at BETWEEN t.term_started_at
-# MAGIC                                        AND DATEADD(DAY, 29, t.term_started_at)
+# MAGIC         WHEN cancel_requested_at BETWEEN t.term_started_at::date AND DATEADD(DAY, 30, t.term_started_at::date)
 # MAGIC         THEN 1 ELSE 0
 # MAGIC     END AS is_cancelled,
 # MAGIC     CASE
-# MAGIC         WHEN t.cancel_requested_at BETWEEN t.term_started_at
-# MAGIC                                        AND DATEADD(DAY, 29, t.term_started_at)
-# MAGIC         THEN 'cancelled' ELSE 'not_cancelled'
+# MAGIC         WHEN cancel_requested_at BETWEEN DATEADD(DAY, 1, t.term_started_at::date) AND DATEADD(DAY, 30, t.term_started_at::date) THEN 'cancelled_in_30_days'
+# MAGIC         WHEN cancel_requested_at = t.term_started_at::date THEN 'cancelled_at_start'
+# MAGIC         ELSE 'not_cancelled'
 # MAGIC     END AS cancel_status
 # MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified q
 # MAGIC JOIN `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscription_terms` t
