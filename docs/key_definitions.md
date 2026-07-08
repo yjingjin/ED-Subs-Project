@@ -26,64 +26,46 @@
 
 ## Modeling (Milestone 1)
 
-**Prediction point:** the moment at which features are frozen and the model asks "will this subscriber cancel in the next 30 days?" Each subscriber generates multiple prediction points depending on the rolling window approach used (see below).
+**Prediction point (T):** `term_started_at::date` — the date the subscription term started. Features are frozen at T (all data up to and including T is used).
 
-**Label window:** 30 days starting from each prediction point (inclusive on both ends).
+**Label window:** T+1, T+30 — the 30 days **after** T, excluding T itself.
 
-**Label end date:** `prediction_point + 29 days` per observation. The outer constraint is that this must fall within the data pull date (2026-06-30), so the latest valid prediction point is 2026-06-01.
+> Same-day cancellations (`cancel_requested_at = term_started_at::date`) are tracked separately as `cancelled_at_start` in the label table and excluded from model training (they are already-decided before the model could act).
 
-![Cohort & Label Logic](cohort_label_logic.png)
+Cohort & Label Logic
 
-**Cohort:** all active, non-reactivated subscription terms. No fixed snapshot date — the prediction point varies per subscriber and per observation window.
+**Cohort:** all active, non-reactivated, activated subscription terms that started before the data cutoff (2026-06-01), filtered to `is_activated = TRUE AND is_paid = TRUE`.
 
-> Table: `ed_silver_subscription_terms_qualified` (base pool; date filtering applied per prediction point in rolling window logic)
+> Table: `ed_silver_subscription_terms_qualified`
 
-```
--- Base cohort filter (applied once)
-term_started_at < '2026-06-01'           -- must have started before data cutoff
-AND NOT (                                 -- exclude reactivated terms
-    term_number > 1
-    AND is_new_start = FALSE
-    AND EXISTS (
-        SELECT 1 FROM subscription_terms prev
-        WHERE prev.subscription_id = t.subscription_id
-          AND prev.term_number = t.term_number - 1
-          AND prev.term_ended_at IS NOT NULL
-    )
-)
+```sql
+-- JOIN to ed_bronze_subscriptions WHERE is_paid = TRUE AND is_activated = TRUE
+-- term_started_at < '2026-06-01'
+-- term_number = 1  (first term only; reactivated terms excluded)
 ```
 
-**Reactivated terms:** (a subscriber churned and started a new term under the same `subscription_id`) are excluded. They have different behavior from continuously renewing subscribers and will be modeled separately in future milestones.
-
-**Label:** did the subscriber request cancellation within 30 days after the prediction point?
+**Label:** three-way classification in `ed_silver_subscription_term_start_labels`:
 
 ```
-is_cancelled = 1  if cancel_requested_at BETWEEN prediction_point
-                                              AND DATEADD(DAY, 29, prediction_point)
+cancel_status = 'cancelled_in_30_days'  if cancel_requested_at BETWEEN T+1 AND T+30
+cancel_status = 'cancelled_at_start'    if cancel_requested_at = T  (excluded from model training)
+cancel_status = 'not_cancelled'         otherwise
+
+is_cancelled = 1  if cancel_requested_at BETWEEN T AND T+30  (includes day 0, for EDA)
 is_cancelled = 0  otherwise
+
+Model training label: cancel_status IN ('cancelled_in_30_days', 'not_cancelled')
 ```
 
-> SQL BETWEEN is inclusive on both ends, so +29 days gives exactly 30 days (day 0 through day 29).
-
-**Label (Milestone 1):** did the subscriber request cancellation within 30 days of the prediction point?
-
-```
-is_cancelled = 1  if cancel_requested_at BETWEEN prediction_point
-                                              AND DATEADD(DAY, 29, prediction_point)
-is_cancelled = 0  otherwise
-```
-
-> Subscriptions are auto-renew. A subscriber must actively cancel to stop being charged.
-> Therefore, voluntary churn = cancellation request. The label directly captures user intent.
+> `is_cancelled` includes day 0 to preserve fell-out context for EDA. Model training filters to `cancel_status != 'cancelled_at_start'`.
 
 **Voluntary churn:** churn driven by an explicit user cancellation request (`cancel_requested_at IS NOT NULL`).
 
-**Involuntary churn:** churn driven by payment failure (ask Kevin:`is_failed_payment_canceled = TRUE` at the term level). Involuntary churn is included in EDA but excluded from model training — it is not driven by user intent and is not actionable by a prevention model.
+**Involuntary churn:** churn driven by payment failure (`is_failed_payment_canceled = TRUE` at the term level). Included in EDA but excluded from model training — not driven by user intent and not actionable by a prevention model.
 
-**Reactivation:** A new term_id is created under the same susbcirption_id. not in scope for Milestone 1. Reactivation only became available after June 2026 and data is sparse. Churn is treated as irreversible for this milestone.
+**Reactivation:** a new `subscription_term_id` created under the same `subscription_id` after a churn. Not in scope for Milestone 1 — reactivation only became available after June 2026 and data is sparse. Churn is treated as irreversible for this milestone.
 
-**Deferred renewal:** a subscriber pushes their next renewal date to a later date
-(`event_name = 'term_renewal_time_changed' AND changed_by = 'CHANGED_BY_USER'` in `int_subs_kafka__events`).
+**Deferred renewal:** a subscriber pushes their next renewal date to a later date (`event_name = 'term_renewal_time_changed' AND changed_by = 'CHANGED_BY_USER'` in `int_subs_kafka__events`).
 
 **Production use:** the model scores all active subscriptions at any point in time and predicts:
 
@@ -129,12 +111,14 @@ Observation 3 (label=0): snapshot = cancel_requested_at - 90,   label window = [
 
 ### Comparison
 
-| | Forward | Backward |
-|---|---|---|
-| Anchor point | term_started_at | cancel_requested_at (churners) |
-| Non-churner anchor | Same (term_started_at) | Needs separate definition |
-| Mirrors production scoring | Yes | Partially |
-| Implementation | Straightforward | More complex for non-churners |
+
+|                            | Forward                | Backward                       |
+| -------------------------- | ---------------------- | ------------------------------ |
+| Anchor point               | term_started_at        | cancel_requested_at (churners) |
+| Non-churner anchor         | Same (term_started_at) | Needs separate definition      |
+| Mirrors production scoring | Yes                    | Partially                      |
+| Implementation             | Straightforward        | More complex for non-churners  |
+
 
 Both approaches will be implemented and evaluated. The better-performing one will be used for the final model.
 
@@ -143,4 +127,3 @@ Both approaches will be implemented and evaluated. The better-performing one wil
 ## Implementation notes
 
 - `Ask kevin: term_ended_at` is only populated when a subscription is already cancelled/terminated. For active subscriptions, use `term_active_until` for the expected end date.
-
