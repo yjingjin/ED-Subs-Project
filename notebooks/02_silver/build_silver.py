@@ -327,12 +327,12 @@ print(f"Silver : {S}*")
 # MAGIC     DATEADD(DAY, 30, t.term_started_at::date) AS day_30_after_start,  
 # MAGIC     t.cancel_requested_at::date AS cancel_requested_at,
 # MAGIC     CASE
-# MAGIC         WHEN cancel_requested_at BETWEEN t.term_started_at::date AND DATEADD(DAY, 30, t.term_started_at::date)
+# MAGIC         WHEN t.cancel_requested_at::date BETWEEN t.term_started_at::date AND DATEADD(DAY, 30, t.term_started_at::date)
 # MAGIC         THEN 1 ELSE 0
 # MAGIC     END AS is_cancelled,
 # MAGIC     CASE
-# MAGIC         WHEN cancel_requested_at BETWEEN DATEADD(DAY, 1, t.term_started_at::date) AND DATEADD(DAY, 30, t.term_started_at::date) THEN 'cancelled_in_30_days'
-# MAGIC         WHEN cancel_requested_at = t.term_started_at::date THEN 'cancelled_at_start'
+# MAGIC         WHEN t.cancel_requested_at::date BETWEEN DATEADD(DAY, 1, t.term_started_at::date) AND DATEADD(DAY, 30, t.term_started_at::date) THEN 'cancelled_in_30_days'
+# MAGIC         WHEN t.cancel_requested_at::date = t.term_started_at::date THEN 'cancelled_at_start'
 # MAGIC         ELSE 'not_cancelled'
 # MAGIC     END AS cancel_status
 # MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified q

@@ -42,6 +42,7 @@ spark.conf.set("eda.orders",     ORDERS)
 spark.conf.set("eda.terms_b",    TERMS_B)
 
 # COMMAND ----------
+
 # MAGIC %md ## 1. Overall cancellation rate
 
 # COMMAND ----------
@@ -56,6 +57,7 @@ spark.conf.set("eda.terms_b",    TERMS_B)
 # MAGIC ORDER BY 2 DESC
 
 # COMMAND ----------
+
 # MAGIC %md ## 2. Cancellation rate by cadence (term length)
 # MAGIC
 # MAGIC Shorter plans cancel more frequently — 1-month subscribers have ~2x the cancel rate of 6-month subscribers.
@@ -80,6 +82,7 @@ spark.conf.set("eda.terms_b",    TERMS_B)
 # MAGIC ORDER BY 1
 
 # COMMAND ----------
+
 # MAGIC %md ## 3. Cancellation rate by drug name
 
 # COMMAND ----------
@@ -102,6 +105,7 @@ spark.conf.set("eda.terms_b",    TERMS_B)
 # MAGIC ORDER BY 4 DESC
 
 # COMMAND ----------
+
 # MAGIC %md ## 4. Cancellation rate by regimen
 
 # COMMAND ----------
@@ -124,13 +128,13 @@ spark.conf.set("eda.terms_b",    TERMS_B)
 # MAGIC ORDER BY 4 DESC
 
 # COMMAND ----------
+
 # MAGIC %md ## 5. Cancellation rate by drug strength
 
 # COMMAND ----------
 
 # MAGIC %sql
 # MAGIC SELECT
-# MAGIC     pt.drug_name,
 # MAGIC     pt.drug_strength,
 # MAGIC     COUNT(DISTINCT l.subscription_id)                        AS n_subscribers,
 # MAGIC     SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END)
@@ -143,17 +147,17 @@ spark.conf.set("eda.terms_b",    TERMS_B)
 # MAGIC     ON l.subscription_term_id = pt.subscription_term_id
 # MAGIC     AND pt.is_latest_plan_term = TRUE
 # MAGIC WHERE l.cancel_status != 'cancelled_at_start'
-# MAGIC GROUP BY 1, 2
-# MAGIC ORDER BY 1, 5 DESC
+# MAGIC GROUP BY 1
+# MAGIC ORDER BY 1, 4 DESC
 
 # COMMAND ----------
+
 # MAGIC %md ## 6. Cancellation rate by monthly dose
 
 # COMMAND ----------
 
 # MAGIC %sql
 # MAGIC SELECT
-# MAGIC     pt.drug_name,
 # MAGIC     pt.monthly_dose,
 # MAGIC     COUNT(DISTINCT l.subscription_id)                        AS n_subscribers,
 # MAGIC     SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END)
@@ -166,10 +170,11 @@ spark.conf.set("eda.terms_b",    TERMS_B)
 # MAGIC     ON l.subscription_term_id = pt.subscription_term_id
 # MAGIC     AND pt.is_latest_plan_term = TRUE
 # MAGIC WHERE l.cancel_status != 'cancelled_at_start'
-# MAGIC GROUP BY 1, 2
-# MAGIC ORDER BY 1, 5 DESC
+# MAGIC GROUP BY 1
+# MAGIC ORDER BY 1, 4 DESC
 
 # COMMAND ----------
+
 # MAGIC %md ## 7. Cancellation rate by plan change count
 # MAGIC
 # MAGIC Subscribers who change plans more often tend to have lower cancel rates — they are more engaged.
@@ -200,6 +205,7 @@ spark.conf.set("eda.terms_b",    TERMS_B)
 # MAGIC ORDER BY 1
 
 # COMMAND ----------
+
 # MAGIC %md ## 8. Cancellation rate by payment failure history
 
 # COMMAND ----------
@@ -236,6 +242,7 @@ spark.conf.set("eda.terms_b",    TERMS_B)
 # MAGIC ORDER BY 1
 
 # COMMAND ----------
+
 # MAGIC %md ## 9. Cancellation rate by delinquency
 
 # COMMAND ----------
@@ -257,6 +264,7 @@ spark.conf.set("eda.terms_b",    TERMS_B)
 # MAGIC ORDER BY 1
 
 # COMMAND ----------
+
 # MAGIC %md ## 10. Cancellation rate by order count (fulfillment behavior)
 
 # COMMAND ----------
@@ -293,6 +301,7 @@ spark.conf.set("eda.terms_b",    TERMS_B)
 # MAGIC ORDER BY 1
 
 # COMMAND ----------
+
 # MAGIC %md ## 11. Cancellation rate by acquisition channel
 
 # COMMAND ----------
@@ -314,6 +323,7 @@ spark.conf.set("eda.terms_b",    TERMS_B)
 # MAGIC ORDER BY 2 DESC
 
 # COMMAND ----------
+
 # MAGIC %md ## 12. Cancellation rate by platform
 
 # COMMAND ----------
@@ -335,6 +345,7 @@ spark.conf.set("eda.terms_b",    TERMS_B)
 # MAGIC ORDER BY 2 DESC
 
 # COMMAND ----------
+
 # MAGIC %md ## 13. Cancellation rate by user state (top 15 states)
 
 # COMMAND ----------
@@ -358,6 +369,7 @@ spark.conf.set("eda.terms_b",    TERMS_B)
 # MAGIC LIMIT 15
 
 # COMMAND ----------
+
 # MAGIC %md ## 14. Days to cancel distribution by cadence
 # MAGIC
 # MAGIC 1-month plans cancel on day 0 and day 23 (refill reminder window).
