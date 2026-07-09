@@ -73,50 +73,34 @@ This is actionable — we can intervene before the cancellation request is submi
 
 ## Rolling window modeling approaches (Milestone 1)
 
-Two rolling window approaches will be tested:
+**Approach: Forward rolling window with weekly snapshots.**
 
-### Approach A — Forward rolling window
-
-Starting from each subscription's `term_started_at`, roll forward in 30-day steps until June 2026. Each step creates one training observation:
+For each subscriber, generate one observation per week starting from `term_started_at`:
 
 ```
-Observation 1: snapshot = term_started_at,          label window = [+0, +30 days]
-Observation 2: snapshot = term_started_at + 30,     label window = [+30, +60 days]
-Observation 3: snapshot = term_started_at + 60,     label window = [+60, +90 days]
-...until snapshot >= 2026-06-01 or term ends
+snapshot_0 = term_started_at
+snapshot_1 = term_started_at + 7 days
+snapshot_2 = term_started_at + 14 days
+...
 ```
 
-- **Label**: did `cancel_requested_at` fall within the label window? → `is_cancelled` 0/1
-- **Features**: all features computed as of the prediction point (no future data)
-- Applies to both churners and non-churners symmetrically
+**Stop rules:**
+- Churners: stop when `snapshot >= cancel_requested_at`
+- Non-churners: stop when `snapshot > 2026-05-31`
 
-### Approach B — Backward from cancellation
+**Latest valid snapshot:** 2026-05-31 — ensures every observation has a fully observable 30-day label window within the label cutoff date (2026-06-30). Note: data was pulled on 2026-07-02; the label cutoff date of 2026-06-30 is a deliberate design choice, not constrained by the pull date.
 
-For churned subscribers only, starting from `cancel_requested_at`, roll backward in 30-day steps until `term_started_at`:
-
+**Label per snapshot:**
 ```
-Observation 1 (label=1): snapshot = cancel_requested_at - 30,   label window = [snapshot, +30 days]
-Observation 2 (label=0): snapshot = cancel_requested_at - 60,   label window = [snapshot, +30 days]
-Observation 3 (label=0): snapshot = cancel_requested_at - 90,   label window = [snapshot, +30 days]
-...until snapshot <= term_started_at
+label = 1  if cancel_requested_at BETWEEN snapshot + 1 AND snapshot + 30
+label = 0  otherwise
 ```
 
-- **For non-churners**: apply the same backward stepping from `term_active_until` or data pull date
-- **Features**: all features computed as of each prediction point
-- Ensures every churn event is captured with exactly one label=1 row at 30 days before cancellation
+"Do not stop at first 1" — once the label becomes 1, continue generating weekly snapshots. A churner may contribute multiple consecutive label=1 rows as the cancel date moves through successive 30-day windows.
 
-### Comparison
+**Features per snapshot:** all data observable strictly up to `snapshot` date (no future leakage). Static features (drug, cadence, regimen) are constant across snapshots. Dynamic features (invoice history, order counts, events) must be computed as of each snapshot date.
 
-
-|                            | Forward                | Backward                       |
-| -------------------------- | ---------------------- | ------------------------------ |
-| Anchor point               | term_started_at        | cancel_requested_at (churners) |
-| Non-churner anchor         | Same (term_started_at) | Needs separate definition      |
-| Mirrors production scoring | Yes                    | Partially                      |
-| Implementation             | Straightforward        | More complex for non-churners  |
-
-
-Both approaches will be implemented and evaluated. The better-performing one will be used for the final model.
+**Class imbalance:** will be addressed during model training.
 
 ---
 

@@ -191,11 +191,33 @@ print(f"Silver : {S}*")
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC -- TODO: replace with your SQL
-# MAGIC -- Filter to qualified subscription_ids:
-# MAGIC --   WHERE subscription_id IN (SELECT subscription_id FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified)
-# MAGIC -- CREATE OR REPLACE TABLE general_scratch_catalog.general_scratch.ed_silver_subscription_charges AS
-# MAGIC -- SELECT ...
+# MAGIC %sql
+# MAGIC CREATE OR REPLACE TABLE general_scratch_catalog.general_scratch.ed_silver_subscription_charges AS
+# MAGIC SELECT
+# MAGIC     charges.charge_id,
+# MAGIC     charges.invoice_id,
+# MAGIC     charges.subscription_id,
+# MAGIC     charges.occurred_at,
+# MAGIC     charges.attempt_number,
+# MAGIC     charges.is_latest_charge,
+# MAGIC     charges.amount_due,
+# MAGIC     charges.gross_revenue,
+# MAGIC     charges.net_revenue,
+# MAGIC     charges.is_paid,
+# MAGIC     charges.is_failed,
+# MAGIC     charges.was_paid,
+# MAGIC     charges.is_refunded,
+# MAGIC     charges.refunded_at,
+# MAGIC     charges.failure_reason,
+# MAGIC     charges.sub_state_after_charge,
+# MAGIC     charges.card_brand,
+# MAGIC     charges.event_name
+# MAGIC FROM `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscription_charges` AS charges
+# MAGIC WHERE charges.subscription_id IN (
+# MAGIC     SELECT subscription_id
+# MAGIC     FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified
+# MAGIC )
+# MAGIC ORDER BY charges.subscription_id, charges.occurred_at
 
 # COMMAND ----------
 
@@ -358,6 +380,77 @@ print(f"Silver : {S}*")
 
 # COMMAND ----------
 
+# MAGIC %md ## 11. subscription_weekly_snapshots (rolling window base table)
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC -- One row per (subscription, snapshot_date) using weekly steps from term_started_at.
+# MAGIC -- Cohort: ed_silver_subscription_terms_qualified (activated, non-reactivated, first-term).
+# MAGIC -- Stop rules:
+# MAGIC --   Churners:     stop when snapshot_date >= cancel_requested_at
+# MAGIC --   Non-churners: stop when snapshot_date > '2026-05-31'
+# MAGIC -- Label (consistent with modeling label):
+# MAGIC --   label = 1 if cancel_requested_at BETWEEN snapshot_date + 1 AND snapshot_date + 30
+# MAGIC --   label = 0 otherwise
+# MAGIC -- Feature window (for feature engineering): [snapshot_date - N, snapshot_date] inclusive
+# MAGIC -- Label window:                             [snapshot_date + 1, snapshot_date + 30] inclusive
+# MAGIC CREATE OR REPLACE TABLE general_scratch_catalog.general_scratch.ed_silver_subscription_weekly_snapshots AS
+# MAGIC WITH qualified AS (
+# MAGIC     SELECT
+# MAGIC         q.subscription_id,
+# MAGIC         q.subscription_term_id,
+# MAGIC         t.term_started_at::date     AS term_started_at,
+# MAGIC         -- Cap cancel_requested_at at label cutoff (2026-06-30).
+# MAGIC         -- Data was pulled on 2026-07-02 so cancellations on 7/1 and 7/2 exist.
+# MAGIC         -- These are treated as not cancelled (label = 0) for all snapshots
+# MAGIC         -- whose label window ends on or before 2026-06-30.
+# MAGIC         CASE
+# MAGIC             WHEN t.cancel_requested_at::date <= DATE '2026-06-30'
+# MAGIC             THEN t.cancel_requested_at::date
+# MAGIC             ELSE NULL
+# MAGIC         END AS cancel_requested_at
+# MAGIC     FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified q
+# MAGIC     JOIN general_scratch_catalog.general_scratch.ed_bronze_subscription_terms t
+# MAGIC         ON q.subscription_term_id = t.subscription_term_id
+# MAGIC ),
+# MAGIC snapshots AS (
+# MAGIC     SELECT
+# MAGIC         q.subscription_id,
+# MAGIC         q.subscription_term_id,
+# MAGIC         q.term_started_at,
+# MAGIC         q.cancel_requested_at,
+# MAGIC         DATEADD(DAY, w.week_num * 7, q.term_started_at) AS snapshot_date,
+# MAGIC         w.week_num                                        AS week_number,
+# MAGIC         w.week_num * 7                                    AS days_since_term_start
+# MAGIC     FROM qualified q
+# MAGIC     JOIN (SELECT explode(sequence(0, 52)) AS week_num) w ON TRUE
+# MAGIC     WHERE
+# MAGIC         -- Churners: generate snapshots strictly before cancellation date
+# MAGIC         (q.cancel_requested_at IS NOT NULL
+# MAGIC          AND DATEADD(DAY, w.week_num * 7, q.term_started_at) < q.cancel_requested_at)
+# MAGIC         OR
+# MAGIC         -- Non-churners: generate snapshots where label window fits within label cutoff (2026-06-30)
+# MAGIC         (q.cancel_requested_at IS NULL
+# MAGIC          AND DATEADD(DAY, w.week_num * 7 + 30, q.term_started_at) <= DATE '2026-06-30')
+# MAGIC )
+# MAGIC SELECT
+# MAGIC     subscription_id,
+# MAGIC     subscription_term_id,
+# MAGIC     term_started_at,
+# MAGIC     cancel_requested_at,
+# MAGIC     snapshot_date,
+# MAGIC     week_number,
+# MAGIC     days_since_term_start,
+# MAGIC     CASE
+# MAGIC         WHEN cancel_requested_at BETWEEN DATEADD(DAY, 1, snapshot_date)
+# MAGIC                                      AND DATEADD(DAY, 30, snapshot_date)
+# MAGIC         THEN 1 ELSE 0
+# MAGIC     END AS label
+# MAGIC FROM snapshots
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Summary
 
@@ -370,11 +463,12 @@ silver_tables = [
     "subscriptions",
     "subscription_all_terms",
     "subscription_plan_terms",
-    # "subscription_charges",
+    "subscription_charges",
     "subscription_invoices",
     "subs_kafka__events",
     # "current_periods",    # deprecated
     "subscription_term_start_labels",
+    "subscription_weekly_snapshots",
     # "subscriptions_churn",
 ]
 

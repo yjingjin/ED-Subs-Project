@@ -68,7 +68,7 @@ One row per billing term (renewal period) within a subscription.
 | termination_type           | string    | How the term ended                                                                                                                                                                                                                |
 | is_new_start               | bool      | True for the first term of the subscription                                                                                                                                                                                       |
 | is_paid                    | bool      | Whether this term was paid                                                                                                                                                                                                        |
-| is_delinquent              | bool      | The latest charge on the latest term invoice failed, but the subscription was still left active after that failed charge                                                                                                          |
+| is_delinquent              | bool      | The latest charge on the latest term invoice failed, but the subscription was still left active after that failed charge |
 | is_failed_payment_canceled | bool      | The latest charge on the latest term invoice failed and that failure caused the subscription to be paused or canceled                                                                                                             |
 | cancel_requested_at        | timestamp | When cancellation was requested                                                                                                                                                                                                   |
 | cancel_reason              | string    | Cancellation reason                                                                                                                                                                                                               |
@@ -151,21 +151,19 @@ One row per invoice (one per billing cycle per subscription term).
 | invoice_number                  | int          | Sequential invoice number within the subscription  |
 | term_number                     | int          | Which term this invoice belongs to                 |
 | invoice_status                  | string       | `paid`, `failed`, `refunded`, …                    |
-| is_paid                         | bool         |                                                    |
-| is_failed                       | bool         |                                                    |
-| is_refunded                     | bool         |                                                    |
-| caused_cancellation             | bool         | Whether this failed invoice triggered cancellation |
-| is_delinquent                   | bool         |                                                    |
-| is_trial_invoice                | bool         |                                                    |
-| is_trial_conversion_invoice     | bool         | First paid invoice after trial                     |
-| amount_due                      | decimal      |                                                    |
-| gross_revenue                   | decimal      |                                                    |
-| net_revenue                     | decimal      |                                                    |
+| is_paid                         | bool         | Invoice was successfully paid                      |
+| is_failed                       | bool         | All charge attempts for this invoice failed (terminal failure) |
+| is_delinquent                   | bool         | Latest charge failed but retries are still pending; subscription remains active |
+| is_trial_invoice                | bool         | Invoice belongs to a trial period                  |
+| is_trial_conversion_invoice     | bool         | First paid invoice after trial conversion          |
+| amount_due                      | decimal      | Amount billed for this invoice                     |
+| gross_revenue                   | decimal      | Gross revenue collected                            |
+| net_revenue                     | decimal      | Net revenue after refunds                          |
 | num_charges                     | int          | Number of charge attempts for this invoice         |
-| paid_at                         | timestamp    |                                                    |
-| failed_at                       | timestamp    |                                                    |
-| first_charge_at                 | timestamp    |                                                    |
-| latest_charge_at                | timestamp    |                                                    |
+| paid_at                         | timestamp    | When the invoice was paid                          |
+| failed_at                       | timestamp    | When the final charge attempt failed               |
+| first_charge_at                 | timestamp    | Timestamp of the first charge attempt              |
+| latest_charge_at                | timestamp    | Timestamp of the most recent charge attempt        |
 | term_started_at / term_ended_at | timestamp    | Term bounds for this invoice                       |
 | drug_id / drug_name             | int / string | Drug on this invoice                               |
 | next_invoice_number             | int          | Expected next invoice number                       |

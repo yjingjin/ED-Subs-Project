@@ -1,4 +1,4 @@
--- query datetime: 07/05/2026 3:30 pm
+-- query datetime: 07/09/2026 5:20 pm
 -- Kafka events for ED subscriptions. Three event types:
 --   term_renewal_time_changed  → user-initiated deferral
 --   upcoming_term_renewal_notified → renewal notification
@@ -11,5 +11,12 @@ WHERE
     AND event_name IN (
         'upcoming_term_renewal_notified',
         'term_renewal_time_changed',
-        'condition_subscription_prescription_written'
+        'condition_subscription_prescription_written',
+        'cancellation_intent_declared',
+        'condition_subscription_new_prescription_required',
+        'plan_change_requested',
+        'clinician_plan_approved',
+        'order_fulfillment_confirmed',
+        'canceled',
+        'cancellation_intent_revoked'
     )
