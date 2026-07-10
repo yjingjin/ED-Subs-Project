@@ -1,9 +1,10 @@
 # Databricks notebook source
-# 04 — Cancellation Type EDA: Voluntary vs Involuntary Churn
-#
-# Goal: understand the split between voluntary churn (cancel request) and
-# involuntary churn (payment failure), compare their characteristics,
-# and justify excluding involuntary churn from the prevention model.
+# MAGIC %md
+# MAGIC #3. Cancellation Type EDA: Voluntary vs Involuntary Churn
+# MAGIC
+# MAGIC Goal: understand the split between voluntary churn (cancel request) and
+# MAGIC involuntary churn (payment failure), compare their characteristics,
+# MAGIC and justify excluding involuntary churn from the prevention model.
 
 # COMMAND ----------
 
@@ -18,6 +19,7 @@ INVOICES   = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_invoices"
 CHARGES    = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_charges"
 PLAN_TERMS = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_plan_terms"
 LABELS     = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_term_start_labels"
+EVENTS     = f"{CATALOG}.{SCHEMA}.ed_silver_subs_kafka__events"
 
 spark.conf.set("eda.qual",       QUAL)
 spark.conf.set("eda.terms",      TERMS)
@@ -27,6 +29,7 @@ spark.conf.set("eda.invoices",   INVOICES)
 spark.conf.set("eda.charges",    CHARGES)
 spark.conf.set("eda.plan_terms", PLAN_TERMS)
 spark.conf.set("eda.labels",     LABELS)
+spark.conf.set("eda.events",     EVENTS)
 
 from scipy.stats import chi2_contingency
 import pandas as pd
@@ -34,13 +37,127 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
 
 # COMMAND ----------
-# MAGIC %md ---
-# MAGIC ## 1. Overall churn classification
+
+# MAGIC %sql
+# MAGIC CREATE OR REPLACE TEMP VIEW subscription_terms_qualified_new AS
+# MAGIC SELECT 
+# MAGIC *
+# MAGIC from ${eda.qual}
+# MAGIC where subscription_id not in (
+# MAGIC     select
+# MAGIC         subscription_id
+# MAGIC     from ${eda.terms}
+# MAGIC     where term_number = 1
+# MAGIC     group by 1
+# MAGIC     having count(distinct subscription_term_id) > 1
+# MAGIC );
 # MAGIC
-# MAGIC Classify each subscription term as:
-# MAGIC - **Voluntary churn**: subscriber submitted a cancellation request (`cancel_requested_at IS NOT NULL`)
-# MAGIC - **Involuntary churn**: term ended due to payment failure (`is_failed_payment_canceled = TRUE`) with no cancel request
-# MAGIC - **Active / retained**: neither of the above
+# MAGIC SELECT
+# MAGIC     COUNT(*)                        AS total_terms,
+# MAGIC     COUNT(DISTINCT subscription_id) AS unique_subscriptions
+# MAGIC FROM subscription_terms_qualified_new
+
+# COMMAND ----------
+
+# MAGIC %md ---
+# MAGIC ## 1. Overall Churn Classification
+# MAGIC
+# MAGIC Classify each subscription term as follows:
+# MAGIC
+# MAGIC - **Churned**: A subscription term is considered effectively **churned** if both `term_started_at` and `term_ended_at` are not null.
+# MAGIC     - **Voluntary churn**: the subscriber submitted a cancellation request (`cancel_requested_at IS NOT NULL`)
+# MAGIC     
+# MAGIC     - **Involuntary churn**: the term ended without a cancellation request, such as due to payment failure (`cancel_requested_at IS NULL`)
+# MAGIC
+# MAGIC - **Active / retained**: `term_started_at` of a subscription is not null but `term_ended_at` is null.
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT
+# MAGIC     CASE
+# MAGIC         WHEN (t.term_ended_at IS NOT NULL AND t.term_ended_at::date <= DATE '2026-06-30') AND t.cancel_requested_at IS NOT NULL                          THEN 'voluntary_churn'
+# MAGIC         WHEN (t.term_ended_at IS NOT NULL AND t.term_ended_at::date <= DATE '2026-06-30')  AND t.cancel_requested_at IS NULL                              THEN 'involuntary_churn'
+# MAGIC         WHEN (t.term_ended_at IS NULL OR t.term_ended_at::date > DATE '2026-06-30') THEN 'retained'
+# MAGIC         ELSE NULL
+# MAGIC     END AS churn_type,
+# MAGIC     COUNT(DISTINCT q.subscription_id)                                   AS n,
+# MAGIC     ROUND(COUNT(DISTINCT q.subscription_id) * 100.0
+# MAGIC           / SUM(COUNT(DISTINCT q.subscription_id)) OVER (), 1)          AS pct
+# MAGIC FROM ${eda.qual} q
+# MAGIC JOIN ${eda.terms_b} t ON q.subscription_term_id = t.subscription_term_id
+# MAGIC GROUP BY 1
+# MAGIC ORDER BY 2 DESC
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC select
+# MAGIC     distinct is_failed_payment_canceled
+# MAGIC from general_scratch_catalog.general_scratch.ed_bronze_subscription_terms
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT
+# MAGIC     t.is_failed_payment_canceled,
+# MAGIC     t.termination_type,
+# MAGIC     COUNT(DISTINCT t.subscription_id)
+# MAGIC FROM ${eda.qual} q
+# MAGIC JOIN ${eda.terms_b} t 
+# MAGIC     ON q.subscription_term_id = t.subscription_term_id
+# MAGIC -- LEFT JOIN ${eda.events} AS cancels
+# MAGIC --     ON q.subscription_id = cancels.subscription_id
+# MAGIC --     AND cancels.event_name = 'canceled'
+# MAGIC WHERE
+# MAGIC     t.term_started_at IS NOT NULL
+# MAGIC     AND t.term_ended_at IS NOT NULL
+# MAGIC GROUP BY 1,2
+# MAGIC ORDER BY 1 DESC,3 DESC
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC `is_failed_payment_canceled` only takes the values `false` and `null`. However, when it is `null`, the subscription terms ended due to payment failure.
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT
+# MAGIC     t.is_failed_payment_canceled,
+# MAGIC     t.cancel_requested_at IS NULL AS did_not_submit_cancel_request,
+# MAGIC     COUNT(DISTINCT t.subscription_id) AS n,
+# MAGIC     ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (partition by t.is_failed_payment_canceled), 2) AS pct
+# MAGIC FROM ${eda.qual} q
+# MAGIC JOIN ${eda.terms_b} t 
+# MAGIC     ON q.subscription_term_id = t.subscription_term_id
+# MAGIC -- LEFT JOIN ${eda.events} AS cancels
+# MAGIC --     ON q.subscription_id = cancels.subscription_id
+# MAGIC --     AND cancels.event_name = 'canceled'
+# MAGIC WHERE
+# MAGIC     t.term_started_at IS NOT NULL
+# MAGIC     AND t.term_ended_at IS NOT NULL
+# MAGIC GROUP BY 1,2
+# MAGIC ORDER BY 1 DESC,3 DESC
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC Most rows with `is_failed_payment_canceled = false` have a cancellation request, whereas most rows with `is_failed_payment_canceled = true` do not.
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT
+# MAGIC     attempt_number,
+# MAGIC     attempts_remaining,
+# MAGIC     COUNT(DISTINCT subscription_id)
+# MAGIC FROM ${eda.charges}
+# MAGIC WHERE
+# MAGIC     was_paid IS FALSE
+# MAGIC     AND subscription_category = 'conditions'
+# MAGIC GROUP BY 1,2
+# MAGIC ORDER BY 1,2
 
 # COMMAND ----------
 
@@ -61,10 +178,12 @@ import matplotlib.ticker as mtick
 # MAGIC ORDER BY 2 DESC
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC **Findings:** []
 
 # COMMAND ----------
+
 # MAGIC %md ---
 # MAGIC ## 2. Voluntary vs involuntary — plan type comparison
 
@@ -106,10 +225,12 @@ import matplotlib.ticker as mtick
 # MAGIC ORDER BY 1,7 DESC
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC **Findings:** []
 
 # COMMAND ----------
+
 # MAGIC %md ---
 # MAGIC ## 3. Voluntary vs involuntary — payment behavior
 
@@ -134,10 +255,12 @@ import matplotlib.ticker as mtick
 # MAGIC ORDER BY 1
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC **Findings:** []
 
 # COMMAND ----------
+
 # MAGIC %md ---
 # MAGIC ## 4. Voluntary vs involuntary — timing (days from term start to churn)
 
@@ -169,10 +292,12 @@ plt.tight_layout()
 plt.show()
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC **Findings:** []
 
 # COMMAND ----------
+
 # MAGIC %md ---
 # MAGIC ## 5. Cancellation label coverage — how much involuntary churn does the label capture?
 # MAGIC
@@ -195,6 +320,7 @@ plt.show()
 # MAGIC ORDER BY 1,2
 
 # COMMAND ----------
+
 # MAGIC %md
 # MAGIC **Interpretation:**
 # MAGIC - `cancelled_in_30_days + is_failed_payment_canceled = FALSE` → voluntary churn correctly captured by label
@@ -204,6 +330,7 @@ plt.show()
 # MAGIC **Findings:** []
 
 # COMMAND ----------
+
 # MAGIC %md ---
 # MAGIC ## 6. Why exclude involuntary churn from the prevention model?
 # MAGIC

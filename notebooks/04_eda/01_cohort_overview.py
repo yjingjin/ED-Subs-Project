@@ -1,7 +1,6 @@
 # Databricks notebook source
-# 01 — Cohort Overview
-# Provides high-level cohort summary stats.
-# Run after build_silver.py
+# MAGIC %md
+# MAGIC # 1. Cohort Overview
 
 # COMMAND ----------
 

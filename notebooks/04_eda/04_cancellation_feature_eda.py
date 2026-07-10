@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # 3 First 30-day Cancellation Feature EDA
+# MAGIC # 4. First 30-day Cancellation Feature EDA
 
 # COMMAND ----------
 
@@ -18,6 +18,7 @@ TERMS      = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_all_terms"
 PLAN_TERMS = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_plan_terms"
 INVOICES   = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_invoices"
 ORDERS     = f"{CATALOG}.{SCHEMA}.ed_bronze_subscription_orders"
+QUAL     = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_terms_qualified"
 
 spark.conf.set("eda.labels",     LABELS)
 spark.conf.set("eda.subs",       SUBS)
@@ -25,6 +26,7 @@ spark.conf.set("eda.terms",      TERMS)
 spark.conf.set("eda.plan_terms", PLAN_TERMS)
 spark.conf.set("eda.invoices",   INVOICES)
 spark.conf.set("eda.orders",     ORDERS)
+spark.conf.set("eda.qual",     QUAL)
 
 from scipy.stats import chi2_contingency, kruskal
 import pandas as pd
@@ -38,6 +40,27 @@ def chi2_test(df, n_col="n_subscribers", cancelled_col="n_cancelled"):
 
 # COMMAND ----------
 
+# MAGIC %sql
+# MAGIC CREATE OR REPLACE TEMP VIEW subscription_terms_qualified_new AS
+# MAGIC SELECT 
+# MAGIC *
+# MAGIC from ${eda.qual}
+# MAGIC where subscription_id not in (
+# MAGIC     select
+# MAGIC         subscription_id
+# MAGIC     from ${eda.terms}
+# MAGIC     where term_number = 1
+# MAGIC     group by 1
+# MAGIC     having count(distinct subscription_term_id) > 1
+# MAGIC );
+# MAGIC
+# MAGIC SELECT
+# MAGIC     COUNT(*)                        AS total_terms,
+# MAGIC     COUNT(DISTINCT subscription_id) AS unique_subscriptions
+# MAGIC FROM subscription_terms_qualified_new
+
+# COMMAND ----------
+
 # MAGIC %md ---
 # MAGIC ## 1. Overall cancellation rate (all cancel_status values)
 
@@ -48,7 +71,9 @@ def chi2_test(df, n_col="n_subscribers", cancelled_col="n_cancelled"):
 # MAGIC     cancel_status,
 # MAGIC     COUNT(*)                                            AS n,
 # MAGIC     ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 2) AS pct
-# MAGIC FROM ${eda.labels}
+# MAGIC FROM ${eda.labels} l
+# MAGIC JOIN subscription_terms_qualified_new q
+# MAGIC on l.subscription_term_id = q.subscription_term_id
 # MAGIC GROUP BY 1
 # MAGIC ORDER BY 2 DESC
 
@@ -400,7 +425,25 @@ chi2_test(df6_1)
 # COMMAND ----------
 
 # MAGIC %md ---
-# MAGIC ## 7. Cancellation rate by plan change count
+# MAGIC ## 7. Cancellation rate by fulfillment type
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC select
+# MAGIC distinct fulfillment_method
+# MAGIC from general_scratch_catalog.general_scratch.ed_silver_subscription_plan_types
+# MAGIC where condition_name = 'Erectile Dysfunction'
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ED subscriptions are fulfillment by delivery only; pickup is not available.
+
+# COMMAND ----------
+
+# MAGIC %md ---
+# MAGIC ## 8. Cancellation rate by plan change count
 # MAGIC *(excludes day-0 cancellations)*
 
 # COMMAND ----------
@@ -411,7 +454,7 @@ chi2_test(df6_1)
 # COMMAND ----------
 
 # MAGIC %md ---
-# MAGIC ## 8. Cancellation rate by payment failure history
+# MAGIC ## 9. Cancellation rate by payment failure history
 # MAGIC *(excludes day-0 cancellations)*
 
 # COMMAND ----------
@@ -448,7 +491,7 @@ chi2_test(df6_1)
 # COMMAND ----------
 
 # MAGIC %md ---
-# MAGIC ## 9. Cancellation rate by acquisition channel
+# MAGIC ## 10. Cancellation rate by acquisition channel
 # MAGIC *(excludes day-0 cancellations)*
 
 # COMMAND ----------
@@ -536,7 +579,7 @@ print(f"Chi-square: {chi2:.2f} | df: {dof} | p-value: {p:.4f} | {sig}")
 # COMMAND ----------
 
 # MAGIC %md ---
-# MAGIC ## 12. Cancellation rate by platform
+# MAGIC ## 11. Cancellation rate by platform
 # MAGIC *(excludes day-0 cancellations)*
 
 # COMMAND ----------
@@ -576,7 +619,7 @@ chi2_test(df12)
 # COMMAND ----------
 
 # MAGIC %md ---
-# MAGIC ## 13. Cancellation rate by user state (states with ≥ 100 subscribers)
+# MAGIC ## 12. Cancellation rate by user state (states with ≥ 100 subscribers)
 # MAGIC *(excludes day-0 cancellations)*
 
 # COMMAND ----------

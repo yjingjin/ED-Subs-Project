@@ -1,15 +1,6 @@
 # Databricks notebook source
-# 02 — Subscription Lifecycle & Fell-Out Analysis
-#
-# Part A — Subscription Lifecycle:
-#   Funnel: Intent → Rx Written → Activated/Paid
-#   Timing at each stage
-#   Overall cancellation pattern
-#
-# Part B — Fell-Out Analysis:
-#   Who never activated? Characteristics and volume
-#   What happened before they fell out (Rx written? orders placed?)
-#   Comparison: fell-out vs activated on observable signals
+# MAGIC %md
+# MAGIC # 2. Subscription Lifecycle & Fell-Out Analysis
 
 # COMMAND ----------
 

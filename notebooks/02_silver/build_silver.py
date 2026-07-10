@@ -70,6 +70,7 @@ print(f"Silver : {S}*")
 # MAGIC %sql
 # MAGIC CREATE OR REPLACE TABLE general_scratch_catalog.general_scratch.ed_silver_subscription_plan_types AS
 # MAGIC SELECT * FROM `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscription_plan_types`
+# MAGIC where condition_name = 'Erectile Dysfunction'
 
 # COMMAND ----------
 
@@ -191,7 +192,6 @@ print(f"Silver : {S}*")
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC %sql
 # MAGIC CREATE OR REPLACE TABLE general_scratch_catalog.general_scratch.ed_silver_subscription_charges AS
 # MAGIC SELECT
 # MAGIC     charges.charge_id,
@@ -209,7 +209,6 @@ print(f"Silver : {S}*")
 # MAGIC     charges.is_refunded,
 # MAGIC     charges.refunded_at,
 # MAGIC     charges.failure_reason,
-# MAGIC     charges.sub_state_after_charge,
 # MAGIC     charges.card_brand,
 # MAGIC     charges.event_name
 # MAGIC FROM `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscription_charges` AS charges
