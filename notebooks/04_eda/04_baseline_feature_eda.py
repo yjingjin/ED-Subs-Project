@@ -61,6 +61,24 @@ def chi2_test(df, n_col="n_subscribers", cancelled_col="n_cancelled"):
 
 # COMMAND ----------
 
+# MAGIC %sql
+# MAGIC -- Filter labels to the refined qualified cohort, excluding involuntary churners.
+# MAGIC -- Involuntary churners (cancel_requested_at IS NULL, term_ended_at <= 2026-06-30)
+# MAGIC -- would appear as label=0 despite having churned, contaminating the retained group.
+# MAGIC -- They are analyzed separately in EDA 03 (cancellation type).
+# MAGIC CREATE OR REPLACE TEMP VIEW labels_qualified AS
+# MAGIC SELECT l.*
+# MAGIC FROM ${eda.labels} l
+# MAGIC JOIN subscription_terms_qualified_new q ON l.subscription_term_id = q.subscription_term_id
+# MAGIC JOIN ${eda.terms} t ON l.subscription_term_id = t.subscription_term_id
+# MAGIC WHERE NOT (
+# MAGIC     t.cancel_requested_at IS NULL
+# MAGIC     AND t.term_ended_at IS NOT NULL
+# MAGIC     AND t.term_ended_at <= '2026-06-30'
+# MAGIC )
+
+# COMMAND ----------
+
 # MAGIC %md ---
 # MAGIC ## 1. Overall cancellation rate (all cancel_status values)
 
@@ -71,7 +89,7 @@ def chi2_test(df, n_col="n_subscribers", cancelled_col="n_cancelled"):
 # MAGIC     cancel_status,
 # MAGIC     COUNT(*)                                            AS n,
 # MAGIC     ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 2) AS pct
-# MAGIC FROM ${eda.labels} l
+# MAGIC FROM labels_qualified l
 # MAGIC JOIN subscription_terms_qualified_new q
 # MAGIC on l.subscription_term_id = q.subscription_term_id
 # MAGIC GROUP BY 1
@@ -99,7 +117,7 @@ def chi2_test(df, n_col="n_subscribers", cancelled_col="n_cancelled"):
 # MAGIC     ROUND(
 # MAGIC         SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1.0 ELSE 0 END)
 # MAGIC         / COUNT(DISTINCT l.subscription_id) * 100, 1)        AS cancel_rate_pct
-# MAGIC FROM ${eda.labels} l
+# MAGIC FROM labels_qualified l
 # MAGIC JOIN ${eda.plan_terms} pt
 # MAGIC     ON l.subscription_term_id = pt.subscription_term_id
 # MAGIC     AND pt.is_latest_plan_term = TRUE
@@ -113,7 +131,7 @@ df2 = spark.sql(f"""
     SELECT pt.term_months AS cadence,
            COUNT(DISTINCT l.subscription_id) AS n_subscribers,
            SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END) AS n_cancelled
-    FROM {LABELS} l
+    FROM labels_qualified l
     JOIN {PLAN_TERMS} pt ON l.subscription_term_id = pt.subscription_term_id AND pt.is_latest_plan_term = TRUE
     WHERE l.cancel_status != 'cancelled_at_start'
     GROUP BY 1 ORDER BY 1
@@ -142,7 +160,7 @@ chi2_test(df2)
 # MAGIC     ROUND(
 # MAGIC         SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1.0 ELSE 0 END)
 # MAGIC         / COUNT(DISTINCT l.subscription_id) * 100, 1)        AS cancel_rate_pct
-# MAGIC FROM ${eda.labels} l
+# MAGIC FROM labels_qualified l
 # MAGIC JOIN ${eda.plan_terms} pt
 # MAGIC     ON l.subscription_term_id = pt.subscription_term_id
 # MAGIC     AND pt.is_latest_plan_term = TRUE
@@ -156,7 +174,7 @@ df3 = spark.sql(f"""
     SELECT pt.drug_name,
            COUNT(DISTINCT l.subscription_id) AS n_subscribers,
            SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END) AS n_cancelled
-    FROM {LABELS} l
+    FROM labels_qualified l
     JOIN {PLAN_TERMS} pt ON l.subscription_term_id = pt.subscription_term_id AND pt.is_latest_plan_term = TRUE
     WHERE l.cancel_status != 'cancelled_at_start'
     GROUP BY 1
@@ -180,7 +198,7 @@ chi2_test(df3)
 # MAGIC     ROUND(
 # MAGIC         SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1.0 ELSE 0 END)
 # MAGIC         / COUNT(DISTINCT l.subscription_id) * 100, 1)        AS cancel_rate_pct
-# MAGIC FROM ${eda.labels} l
+# MAGIC FROM labels_qualified l
 # MAGIC JOIN ${eda.plan_terms} pt
 # MAGIC     ON l.subscription_term_id = pt.subscription_term_id
 # MAGIC     AND pt.is_latest_plan_term = TRUE
@@ -194,7 +212,7 @@ df3_1 = spark.sql(f"""
     SELECT pt.drug_name,
            COUNT(DISTINCT l.subscription_id) AS n_subscribers,
            SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END) AS n_cancelled
-    FROM {LABELS} l
+    FROM labels_qualified l
     JOIN {PLAN_TERMS} pt ON l.subscription_term_id = pt.subscription_term_id AND pt.is_latest_plan_term = TRUE
     WHERE l.cancel_status != 'cancelled_at_start' AND regimen = 'AS_NEEDED'
     GROUP BY 1
@@ -222,7 +240,7 @@ chi2_test(df3_1)
 # MAGIC     ROUND(
 # MAGIC         SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1.0 ELSE 0 END)
 # MAGIC         / COUNT(DISTINCT l.subscription_id) * 100, 1)        AS cancel_rate_pct
-# MAGIC FROM ${eda.labels} l
+# MAGIC FROM labels_qualified l
 # MAGIC JOIN ${eda.plan_terms} pt
 # MAGIC     ON l.subscription_term_id = pt.subscription_term_id
 # MAGIC     AND pt.is_latest_plan_term = TRUE
@@ -236,7 +254,7 @@ df4 = spark.sql(f"""
     SELECT pt.regimen,
            COUNT(DISTINCT l.subscription_id) AS n_subscribers,
            SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END) AS n_cancelled
-    FROM {LABELS} l
+    FROM labels_qualified l
     JOIN {PLAN_TERMS} pt ON l.subscription_term_id = pt.subscription_term_id AND pt.is_latest_plan_term = TRUE
     WHERE l.cancel_status != 'cancelled_at_start'
     GROUP BY 1
@@ -267,7 +285,7 @@ chi2_test(df4)
 # MAGIC     ROUND(
 # MAGIC         SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1.0 ELSE 0 END)
 # MAGIC         / COUNT(DISTINCT l.subscription_id) * 100, 1)        AS cancel_rate_pct
-# MAGIC FROM ${eda.labels} l
+# MAGIC FROM labels_qualified l
 # MAGIC JOIN ${eda.plan_terms} pt
 # MAGIC     ON l.subscription_term_id = pt.subscription_term_id
 # MAGIC     AND pt.is_latest_plan_term = TRUE
@@ -281,7 +299,7 @@ df5 = spark.sql(f"""
     SELECT pt.drug_strength,
            COUNT(DISTINCT l.subscription_id) AS n_subscribers,
            SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END) AS n_cancelled
-    FROM {LABELS} l
+    FROM labels_qualified l
     JOIN {PLAN_TERMS} pt ON l.subscription_term_id = pt.subscription_term_id AND pt.is_latest_plan_term = TRUE
     WHERE l.cancel_status != 'cancelled_at_start'
     GROUP BY 1
@@ -303,7 +321,7 @@ chi2_test(df5)
 # MAGIC     ROUND(
 # MAGIC         SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1.0 ELSE 0 END)
 # MAGIC         / COUNT(DISTINCT l.subscription_id) * 100, 1)        AS cancel_rate_pct
-# MAGIC FROM ${eda.labels} l
+# MAGIC FROM labels_qualified l
 # MAGIC JOIN ${eda.plan_terms} pt
 # MAGIC     ON l.subscription_term_id = pt.subscription_term_id
 # MAGIC     AND pt.is_latest_plan_term = TRUE
@@ -323,7 +341,7 @@ df5_1 = spark.sql(f"""
         END AS strength_group,
            COUNT(DISTINCT l.subscription_id) AS n_subscribers,
            SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END) AS n_cancelled
-    FROM {LABELS} l
+    FROM labels_qualified l
     JOIN {PLAN_TERMS} pt ON l.subscription_term_id = pt.subscription_term_id AND pt.is_latest_plan_term = TRUE
     WHERE l.cancel_status != 'cancelled_at_start'
     GROUP BY 1
@@ -351,7 +369,7 @@ chi2_test(df5_1)
 # MAGIC     ROUND(
 # MAGIC         SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1.0 ELSE 0 END)
 # MAGIC         / COUNT(DISTINCT l.subscription_id) * 100, 1)        AS cancel_rate_pct
-# MAGIC FROM ${eda.labels} l
+# MAGIC FROM labels_qualified l
 # MAGIC JOIN ${eda.plan_terms} pt
 # MAGIC     ON l.subscription_term_id = pt.subscription_term_id
 # MAGIC     AND pt.is_latest_plan_term = TRUE
@@ -365,7 +383,7 @@ df6 = spark.sql(f"""
     SELECT pt.monthly_dose,
            COUNT(DISTINCT l.subscription_id) AS n_subscribers,
            SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END) AS n_cancelled
-    FROM {LABELS} l
+    FROM labels_qualified l
     JOIN {PLAN_TERMS} pt ON l.subscription_term_id = pt.subscription_term_id AND pt.is_latest_plan_term = TRUE
     WHERE l.cancel_status != 'cancelled_at_start'
     GROUP BY 1
@@ -387,7 +405,7 @@ chi2_test(df6)
 # MAGIC     ROUND(
 # MAGIC         SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1.0 ELSE 0 END)
 # MAGIC         / COUNT(DISTINCT l.subscription_id) * 100, 1)        AS cancel_rate_pct
-# MAGIC FROM ${eda.labels} l
+# MAGIC FROM labels_qualified l
 # MAGIC JOIN ${eda.plan_terms} pt
 # MAGIC     ON l.subscription_term_id = pt.subscription_term_id
 # MAGIC     AND pt.is_latest_plan_term = TRUE
@@ -407,7 +425,7 @@ df6_1 = spark.sql(f"""
         END AS dose_group,
         COUNT(DISTINCT l.subscription_id) AS n_subscribers,
         SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END) AS n_cancelled
-    FROM {LABELS} l
+    FROM labels_qualified l
     JOIN {PLAN_TERMS} pt
         ON l.subscription_term_id = pt.subscription_term_id
         AND pt.is_latest_plan_term = TRUE
@@ -464,7 +482,7 @@ chi2_test(df6_1)
 # MAGIC     SELECT l.subscription_term_id,
 # MAGIC            SUM(CASE WHEN i.is_failed = TRUE THEN 1 ELSE 0 END) AS failed_invoice_count
 # MAGIC     FROM ${eda.invoices} i
-# MAGIC     JOIN ${eda.labels} l
+# MAGIC     JOIN labels_qualified l
 # MAGIC     ON l.subscription_term_id = i.subscription_term_id
 # MAGIC     WHERE i.created_at <= l.term_started_at
 # MAGIC         AND (i.failed_at is null OR i.failed_at <= l.term_started_at)
@@ -477,7 +495,7 @@ chi2_test(df6_1)
 # MAGIC     ROUND(
 # MAGIC         SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1.0 ELSE 0 END)
 # MAGIC         / COUNT(DISTINCT l.subscription_id) * 100, 1)        AS cancel_rate_pct
-# MAGIC FROM ${eda.labels} l
+# MAGIC FROM labels_qualified l
 # MAGIC JOIN invoice_stats ist ON l.subscription_term_id = ist.subscription_term_id
 # MAGIC WHERE l.cancel_status != 'cancelled_at_start'
 # MAGIC GROUP BY 1
@@ -504,7 +522,7 @@ chi2_test(df6_1)
 # MAGIC     ROUND(
 # MAGIC         SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1.0 ELSE 0 END)
 # MAGIC         / COUNT(DISTINCT l.subscription_id) * 100, 1)        AS cancel_rate_pct
-# MAGIC FROM ${eda.labels} l
+# MAGIC FROM labels_qualified l
 # MAGIC JOIN ${eda.subs} s ON l.subscription_id = s.subscription_id
 # MAGIC WHERE l.cancel_status != 'cancelled_at_start'
 # MAGIC GROUP BY 1
@@ -516,7 +534,7 @@ df11 = spark.sql(f"""
     SELECT s.first_channel_grouping,
            COUNT(DISTINCT l.subscription_id) AS n_subscribers,
            SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END) AS n_cancelled
-    FROM {LABELS} l
+    FROM labels_qualified l
     JOIN {SUBS} s ON l.subscription_id = s.subscription_id
     WHERE l.cancel_status != 'cancelled_at_start'
     GROUP BY 1
@@ -539,7 +557,7 @@ chi2_test(df11)
 # MAGIC     ROUND(
 # MAGIC         SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1.0 ELSE 0 END)
 # MAGIC         / COUNT(DISTINCT l.subscription_id) * 100, 1)        AS cancel_rate_pct
-# MAGIC FROM ${eda.labels} l
+# MAGIC FROM labels_qualified l
 # MAGIC JOIN ${eda.subs} s ON l.subscription_id = s.subscription_id
 # MAGIC WHERE l.cancel_status != 'cancelled_at_start'
 # MAGIC GROUP BY 1
@@ -560,7 +578,7 @@ df = spark.sql(f"""
         END AS channel_group,
         COUNT(DISTINCT l.subscription_id) AS n_subscribers,
         SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END) AS n_cancelled
-    FROM {LABELS} l
+    FROM labels_qualified l
     JOIN {SUBS} s ON l.subscription_id = s.subscription_id
     WHERE l.cancel_status != 'cancelled_at_start'
     GROUP BY 1
@@ -592,7 +610,7 @@ print(f"Chi-square: {chi2:.2f} | df: {dof} | p-value: {p:.4f} | {sig}")
 # MAGIC     ROUND(
 # MAGIC         SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1.0 ELSE 0 END)
 # MAGIC         / COUNT(DISTINCT l.subscription_id) * 100, 1)        AS cancel_rate_pct
-# MAGIC FROM ${eda.labels} l
+# MAGIC FROM labels_qualified l
 # MAGIC JOIN ${eda.subs} s ON l.subscription_id = s.subscription_id
 # MAGIC WHERE l.cancel_status != 'cancelled_at_start'
 # MAGIC GROUP BY 1
@@ -604,7 +622,7 @@ df12 = spark.sql(f"""
     SELECT s.first_platform,
            COUNT(DISTINCT l.subscription_id) AS n_subscribers,
            SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END) AS n_cancelled
-    FROM {LABELS} l
+    FROM labels_qualified l
     JOIN {SUBS} s ON l.subscription_id = s.subscription_id
     WHERE l.cancel_status != 'cancelled_at_start'
     GROUP BY 1
@@ -632,7 +650,7 @@ chi2_test(df12)
 # MAGIC     ROUND(
 # MAGIC         SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1.0 ELSE 0 END)
 # MAGIC         / COUNT(DISTINCT l.subscription_id) * 100, 1)        AS cancel_rate_pct
-# MAGIC FROM ${eda.labels} l
+# MAGIC FROM labels_qualified l
 # MAGIC JOIN ${eda.subs} s ON l.subscription_id = s.subscription_id
 # MAGIC WHERE l.cancel_status != 'cancelled_at_start'
 # MAGIC GROUP BY 1
@@ -645,7 +663,7 @@ df13 = spark.sql(f"""
     SELECT s.user_state,
            COUNT(DISTINCT l.subscription_id) AS n_subscribers,
            SUM(CASE WHEN l.cancel_status = 'cancelled_in_30_days' THEN 1 ELSE 0 END) AS n_cancelled
-    FROM {LABELS} l
+    FROM labels_qualified l
     JOIN {SUBS} s ON l.subscription_id = s.subscription_id
     WHERE l.cancel_status != 'cancelled_at_start'
     GROUP BY 1

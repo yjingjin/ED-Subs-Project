@@ -408,10 +408,19 @@ print(f"Silver : {S}*")
 # MAGIC             WHEN t.cancel_requested_at::date <= DATE '2026-06-30'
 # MAGIC             THEN t.cancel_requested_at::date
 # MAGIC             ELSE NULL
-# MAGIC         END AS cancel_requested_at
+# MAGIC         END AS cancel_requested_at,
+# MAGIC         t.term_ended_at::date AS term_ended_at
 # MAGIC     FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified q
 # MAGIC     JOIN general_scratch_catalog.general_scratch.ed_bronze_subscription_terms t
 # MAGIC         ON q.subscription_term_id = t.subscription_term_id
+# MAGIC     -- Exclude involuntary churners: term ended (not by cancel request) on or before label cutoff.
+# MAGIC     -- These subscribers have label=0 at all snapshots but actually left via payment failure,
+# MAGIC     -- contaminating the retained group. They are analyzed separately in EDA 03.
+# MAGIC     WHERE NOT (
+# MAGIC         t.cancel_requested_at IS NULL
+# MAGIC         AND t.term_ended_at IS NOT NULL
+# MAGIC         AND t.term_ended_at::date <= DATE '2026-06-30'
+# MAGIC     )
 # MAGIC ),
 # MAGIC snapshots AS (
 # MAGIC     SELECT

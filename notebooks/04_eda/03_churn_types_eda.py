@@ -84,7 +84,7 @@ import matplotlib.ticker as mtick
 # MAGIC     COUNT(DISTINCT q.subscription_id)                                   AS n,
 # MAGIC     ROUND(COUNT(DISTINCT q.subscription_id) * 100.0
 # MAGIC           / SUM(COUNT(DISTINCT q.subscription_id)) OVER (), 1)          AS pct
-# MAGIC FROM ${eda.qual} q
+# MAGIC FROM subscription_terms_qualified_new q
 # MAGIC JOIN ${eda.terms_b} t ON q.subscription_term_id = t.subscription_term_id
 # MAGIC GROUP BY 1
 # MAGIC ORDER BY 2 DESC
@@ -103,7 +103,7 @@ import matplotlib.ticker as mtick
 # MAGIC     t.is_failed_payment_canceled,
 # MAGIC     t.termination_type,
 # MAGIC     COUNT(DISTINCT t.subscription_id)
-# MAGIC FROM ${eda.qual} q
+# MAGIC FROM subscription_terms_qualified_new q
 # MAGIC JOIN ${eda.terms_b} t 
 # MAGIC     ON q.subscription_term_id = t.subscription_term_id
 # MAGIC -- LEFT JOIN ${eda.events} AS cancels
@@ -128,7 +128,7 @@ import matplotlib.ticker as mtick
 # MAGIC     t.cancel_requested_at IS NULL AS did_not_submit_cancel_request,
 # MAGIC     COUNT(DISTINCT t.subscription_id) AS n,
 # MAGIC     ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (partition by t.is_failed_payment_canceled), 2) AS pct
-# MAGIC FROM ${eda.qual} q
+# MAGIC FROM subscription_terms_qualified_new q
 # MAGIC JOIN ${eda.terms_b} t 
 # MAGIC     ON q.subscription_term_id = t.subscription_term_id
 # MAGIC -- LEFT JOIN ${eda.events} AS cancels
@@ -172,7 +172,7 @@ import matplotlib.ticker as mtick
 # MAGIC     COUNT(DISTINCT q.subscription_id)                                   AS n,
 # MAGIC     ROUND(COUNT(DISTINCT q.subscription_id) * 100.0
 # MAGIC           / SUM(COUNT(DISTINCT q.subscription_id)) OVER (), 1)          AS pct
-# MAGIC FROM ${eda.qual} q
+# MAGIC FROM subscription_terms_qualified_new q
 # MAGIC JOIN ${eda.terms_b} t ON q.subscription_term_id = t.subscription_term_id
 # MAGIC GROUP BY 1
 # MAGIC ORDER BY 2 DESC
@@ -217,7 +217,7 @@ import matplotlib.ticker as mtick
 # MAGIC                   WHEN t.is_failed_payment_canceled = TRUE THEN 'involuntary'
 # MAGIC                   ELSE 'retained' END
 # MAGIC           ), 1) AS pct_within_type
-# MAGIC FROM ${eda.qual} q
+# MAGIC FROM subscription_terms_qualified_new q
 # MAGIC JOIN ${eda.terms_b} t ON q.subscription_term_id = t.subscription_term_id
 # MAGIC JOIN ${eda.plan_terms} pt ON q.subscription_term_id = pt.subscription_term_id
 # MAGIC     AND pt.is_latest_plan_term = TRUE
@@ -248,7 +248,7 @@ import matplotlib.ticker as mtick
 # MAGIC     ROUND(AVG(CASE WHEN inv.is_failed THEN 1.0 ELSE 0 END), 3) AS avg_failure_rate,
 # MAGIC     ROUND(AVG(CASE WHEN inv.is_delinquent THEN 1.0 ELSE 0 END), 3) AS avg_delinquency_rate,
 # MAGIC     COUNT(DISTINCT q.subscription_id)                          AS n
-# MAGIC FROM ${eda.qual} q
+# MAGIC FROM subscription_terms_qualified_new q
 # MAGIC JOIN ${eda.terms_b} t ON q.subscription_term_id = t.subscription_term_id
 # MAGIC JOIN ${eda.invoices} inv ON q.subscription_term_id = inv.subscription_term_id
 # MAGIC GROUP BY 1
@@ -274,7 +274,7 @@ df4 = spark.sql(f"""
         END AS churn_type,
         DATEDIFF(DAY, t.term_started_at::date,
                  COALESCE(t.cancel_requested_at::date, t.term_ended_at::date)) AS days_to_churn
-    FROM {QUAL} q
+    FROM subscription_terms_qualified_new q
     JOIN {TERMS_B} t ON q.subscription_term_id = t.subscription_term_id
     WHERE t.cancel_requested_at IS NOT NULL OR t.is_failed_payment_canceled = TRUE
 """).toPandas()
