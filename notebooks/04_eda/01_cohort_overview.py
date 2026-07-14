@@ -9,7 +9,7 @@ SCHEMA  = "general_scratch"
 QUAL    = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_terms_qualified"
 TERMS  = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_all_terms"
 SUBS    = f"{CATALOG}.{SCHEMA}.ed_silver_subscriptions"
-LABELS  = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_term_start_labels"
+LABELS  = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_30d_cancel_label"
 EVENTS = f"{CATALOG}.{SCHEMA}.ed_silver_subs_kafka__events"
 PLAN_TERMS = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_plan_terms"
 

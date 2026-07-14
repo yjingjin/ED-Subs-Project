@@ -331,7 +331,7 @@ print(f"Silver : {S}*")
 
 # COMMAND ----------
 
-# MAGIC %md ## 10. subscription_term_start_labels (cancellation label)
+# MAGIC %md ## 10. subscription_30d_cancel_label (cancellation label)
 
 # COMMAND ----------
 
@@ -341,11 +341,12 @@ print(f"Silver : {S}*")
 # MAGIC -- Label window: term_started_at to term_started_at + 29 days (30 days inclusive).
 # MAGIC -- Activated subs only: bronze subscriptions is NOT pre-filtered by activation,
 # MAGIC -- so filter is applied explicitly here via subs_is_activated = TRUE.
-# MAGIC CREATE OR REPLACE TABLE general_scratch_catalog.general_scratch.ed_silver_subscription_term_start_labels AS
+# MAGIC CREATE OR REPLACE TABLE general_scratch_catalog.general_scratch.ed_silver_subscription_30d_cancel_label AS
 # MAGIC SELECT
 # MAGIC     q.subscription_id,
 # MAGIC     q.subscription_term_id,
 # MAGIC     t.term_started_at::date AS term_started_at,
+# MAGIC     t.term_ended_at::date AS term_ended_at,
 # MAGIC     DATEADD(DAY, 1, t.term_started_at::date)  AS day_1_after_start,
 # MAGIC     DATEADD(DAY, 30, t.term_started_at::date) AS day_30_after_start,  
 # MAGIC     t.cancel_requested_at::date AS cancel_requested_at,
@@ -359,10 +360,13 @@ print(f"Silver : {S}*")
 # MAGIC         ELSE 'not_cancelled'
 # MAGIC     END AS cancel_status
 # MAGIC FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified q
-# MAGIC JOIN `general_scratch_catalog`.`general_scratch`.`ed_bronze_subscription_terms` t
+# MAGIC JOIN general_scratch_catalog.general_scratch.ed_bronze_subscription_terms t
 # MAGIC     ON q.subscription_term_id = t.subscription_term_id
-# MAGIC JOIN general_scratch_catalog.general_scratch.ed_silver_subscriptions s
-# MAGIC     ON q.subscription_id = s.subscription_id
+# MAGIC WHERE NOT (
+# MAGIC     t.cancel_requested_at IS NULL
+# MAGIC     AND t.term_ended_at IS NOT NULL
+# MAGIC     AND t.term_ended_at <= '2026-06-30'
+# MAGIC )
 
 # COMMAND ----------
 
@@ -388,7 +392,7 @@ print(f"Silver : {S}*")
 # MAGIC -- Cohort: ed_silver_subscription_terms_qualified (activated, non-reactivated, first-term).
 # MAGIC -- Stop rules:
 # MAGIC --   Churners:     stop when snapshot_date >= cancel_requested_at
-# MAGIC --   Non-churners: stop when snapshot_date > '2026-05-31'
+# MAGIC --   Non-churners: stop when snapshot_date >= '2026-06-01'
 # MAGIC -- Label (consistent with modeling label):
 # MAGIC --   label = 1 if cancel_requested_at BETWEEN snapshot_date + 1 AND snapshot_date + 30
 # MAGIC --   label = 0 otherwise
@@ -413,20 +417,13 @@ print(f"Silver : {S}*")
 # MAGIC     FROM general_scratch_catalog.general_scratch.ed_silver_subscription_terms_qualified q
 # MAGIC     JOIN general_scratch_catalog.general_scratch.ed_bronze_subscription_terms t
 # MAGIC         ON q.subscription_term_id = t.subscription_term_id
-# MAGIC     -- Exclude involuntary churners: term ended (not by cancel request) on or before label cutoff.
-# MAGIC     -- These subscribers have label=0 at all snapshots but actually left via payment failure,
-# MAGIC     -- contaminating the retained group. They are analyzed separately in EDA 03.
-# MAGIC     WHERE NOT (
-# MAGIC         t.cancel_requested_at IS NULL
-# MAGIC         AND t.term_ended_at IS NOT NULL
-# MAGIC         AND t.term_ended_at::date <= DATE '2026-06-30'
-# MAGIC     )
 # MAGIC ),
 # MAGIC snapshots AS (
 # MAGIC     SELECT
 # MAGIC         q.subscription_id,
 # MAGIC         q.subscription_term_id,
 # MAGIC         q.term_started_at,
+# MAGIC         q.term_ended_at,
 # MAGIC         q.cancel_requested_at,
 # MAGIC         DATEADD(DAY, w.week_num * 7, q.term_started_at) AS snapshot_date,
 # MAGIC         w.week_num                                        AS week_number,
@@ -434,18 +431,26 @@ print(f"Silver : {S}*")
 # MAGIC     FROM qualified q
 # MAGIC     JOIN (SELECT explode(sequence(0, 52)) AS week_num) w ON TRUE
 # MAGIC     WHERE
-# MAGIC         -- Churners: generate snapshots strictly before cancellation date
+# MAGIC         -- Voluntary churners: stop before cancellation date
 # MAGIC         (q.cancel_requested_at IS NOT NULL
 # MAGIC          AND DATEADD(DAY, w.week_num * 7, q.term_started_at) < q.cancel_requested_at)
 # MAGIC         OR
-# MAGIC         -- Non-churners: generate snapshots where label window fits within label cutoff (2026-06-30)
+# MAGIC         -- Truly retained (no cancel, no ended term): stop at label cutoff
 # MAGIC         (q.cancel_requested_at IS NULL
+# MAGIC          AND (q.term_ended_at IS NULL OR q.term_ended_at > DATE '2026-06-30')
 # MAGIC          AND DATEADD(DAY, w.week_num * 7 + 30, q.term_started_at) <= DATE '2026-06-30')
-# MAGIC )
+# MAGIC         OR
+# MAGIC         -- Involuntary churners: stop when snapshot + 30 >= term_ended_at
+# MAGIC         (q.cancel_requested_at IS NULL
+# MAGIC          AND q.term_ended_at IS NOT NULL
+# MAGIC          AND q.term_ended_at <= DATE '2026-06-30'
+# MAGIC          AND DATEADD(DAY, w.week_num * 7 + 30, q.term_started_at) <= q.term_ended_at)
+# MAGIC         )
 # MAGIC SELECT
 # MAGIC     subscription_id,
 # MAGIC     subscription_term_id,
 # MAGIC     term_started_at,
+# MAGIC     term_ended_at,
 # MAGIC     cancel_requested_at,
 # MAGIC     snapshot_date,
 # MAGIC     week_number,
@@ -475,7 +480,7 @@ silver_tables = [
     "subscription_invoices",
     "subs_kafka__events",
     # "current_periods",    # deprecated
-    "subscription_term_start_labels",
+    "subscription_30d_cancel_label",
     "subscription_weekly_snapshots",
     # "subscriptions_churn",
 ]

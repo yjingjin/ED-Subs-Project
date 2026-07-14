@@ -5,14 +5,14 @@
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC This is the **Phase I EDA** for cancellation, where we **set the prediction point (T) at the start of the subscription**. In Phase II, we will explore additional features using rolling prediction points.
+# MAGIC This is the **Phase I EDA** for cancellation, where we **set the prediction point (T) at the start of the subscription**. In Phase II (EDA notebook 05), we will explore additional features using rolling prediction points.
 
 # COMMAND ----------
 
 CATALOG    = "general_scratch_catalog"
 SCHEMA     = "general_scratch"
 
-LABELS     = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_term_start_labels"
+LABELS     = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_30d_cancel_label"
 SUBS       = f"{CATALOG}.{SCHEMA}.ed_silver_subscriptions"
 TERMS      = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_all_terms"
 PLAN_TERMS = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_plan_terms"
@@ -62,14 +62,22 @@ def chi2_test(df, n_col="n_subscribers", cancelled_col="n_cancelled"):
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC -- Filter labels to the refined qualified cohort (includes involuntary churners).
-# MAGIC -- Involuntary churners have label=0 (no cancel request) — this is the correct label
-# MAGIC -- for a voluntary cancellation model. They are included so the model learns from
-# MAGIC -- the full active subscriber population it will encounter in production.
+# MAGIC -- Filter labels to the refined qualified cohort, excluding involuntary churners.
+# MAGIC -- Involuntary churners (cancel_requested_at IS NULL, term_ended_at <= 2026-06-30)
+# MAGIC -- would appear as label=0 despite having churned, contaminating the retained group.
+# MAGIC -- They are analyzed separately in EDA 03 (cancellation type).
 # MAGIC CREATE OR REPLACE TEMP VIEW labels_qualified AS
 # MAGIC SELECT l.*
 # MAGIC FROM ${eda.labels} l
 # MAGIC JOIN subscription_terms_qualified_new q ON l.subscription_term_id = q.subscription_term_id
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT
+# MAGIC     COUNT(*)                        AS total_terms,
+# MAGIC     COUNT(DISTINCT subscription_id) AS unique_subscriptions
+# MAGIC FROM labels_qualified
 
 # COMMAND ----------
 
@@ -84,8 +92,6 @@ def chi2_test(df, n_col="n_subscribers", cancelled_col="n_cancelled"):
 # MAGIC     COUNT(*)                                            AS n,
 # MAGIC     ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 2) AS pct
 # MAGIC FROM labels_qualified l
-# MAGIC JOIN subscription_terms_qualified_new q
-# MAGIC on l.subscription_term_id = q.subscription_term_id
 # MAGIC GROUP BY 1
 # MAGIC ORDER BY 2 DESC
 

@@ -18,7 +18,7 @@ SUBS       = f"{CATALOG}.{SCHEMA}.ed_silver_subscriptions"
 INVOICES   = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_invoices"
 CHARGES    = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_charges"
 PLAN_TERMS = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_plan_terms"
-LABELS     = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_term_start_labels"
+LABELS     = f"{CATALOG}.{SCHEMA}.ed_silver_subscription_30d_cancel_label"
 EVENTS     = f"{CATALOG}.{SCHEMA}.ed_silver_subs_kafka__events"
 
 spark.conf.set("eda.qual",       QUAL)
