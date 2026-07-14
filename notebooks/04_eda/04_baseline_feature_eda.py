@@ -62,20 +62,14 @@ def chi2_test(df, n_col="n_subscribers", cancelled_col="n_cancelled"):
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC -- Filter labels to the refined qualified cohort, excluding involuntary churners.
-# MAGIC -- Involuntary churners (cancel_requested_at IS NULL, term_ended_at <= 2026-06-30)
-# MAGIC -- would appear as label=0 despite having churned, contaminating the retained group.
-# MAGIC -- They are analyzed separately in EDA 03 (cancellation type).
+# MAGIC -- Filter labels to the refined qualified cohort (includes involuntary churners).
+# MAGIC -- Involuntary churners have label=0 (no cancel request) — this is the correct label
+# MAGIC -- for a voluntary cancellation model. They are included so the model learns from
+# MAGIC -- the full active subscriber population it will encounter in production.
 # MAGIC CREATE OR REPLACE TEMP VIEW labels_qualified AS
 # MAGIC SELECT l.*
 # MAGIC FROM ${eda.labels} l
 # MAGIC JOIN subscription_terms_qualified_new q ON l.subscription_term_id = q.subscription_term_id
-# MAGIC JOIN ${eda.terms} t ON l.subscription_term_id = t.subscription_term_id
-# MAGIC WHERE NOT (
-# MAGIC     t.cancel_requested_at IS NULL
-# MAGIC     AND t.term_ended_at IS NOT NULL
-# MAGIC     AND t.term_ended_at <= '2026-06-30'
-# MAGIC )
 
 # COMMAND ----------
 
