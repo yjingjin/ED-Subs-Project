@@ -440,7 +440,7 @@ print(f"Silver : {S}*")
 # MAGIC          AND (q.term_ended_at IS NULL OR q.term_ended_at > DATE '2026-06-30')
 # MAGIC          AND DATEADD(DAY, w.week_num * 7 + 30, q.term_started_at) <= DATE '2026-06-30')
 # MAGIC         OR
-# MAGIC         -- Involuntary churners: stop when snapshot + 30 >= term_ended_at
+# MAGIC         -- Involuntary churners: stop when snapshot + 30 > term_ended_at
 # MAGIC         (q.cancel_requested_at IS NULL
 # MAGIC          AND q.term_ended_at IS NOT NULL
 # MAGIC          AND q.term_ended_at <= DATE '2026-06-30'
