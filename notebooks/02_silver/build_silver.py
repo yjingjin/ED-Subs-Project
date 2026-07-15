@@ -187,7 +187,8 @@ print(f"Silver : {S}*")
 
 # COMMAND ----------
 
-# MAGIC %md ## 6. subscription_charges
+# MAGIC %md
+# MAGIC ## 6. subscription_charges
 
 # COMMAND ----------
 
@@ -199,6 +200,7 @@ print(f"Silver : {S}*")
 # MAGIC     charges.subscription_id,
 # MAGIC     charges.occurred_at,
 # MAGIC     charges.attempt_number,
+# MAGIC     charges.attempts_remaining,
 # MAGIC     charges.is_latest_charge,
 # MAGIC     charges.amount_due,
 # MAGIC     charges.gross_revenue,
