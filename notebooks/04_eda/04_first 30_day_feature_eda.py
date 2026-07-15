@@ -65,7 +65,7 @@ def chi2_test(df, n_col="n_subscribers", cancelled_col="n_cancelled"):
 # MAGIC -- Filter labels to the refined qualified cohort, excluding involuntary churners.
 # MAGIC -- Involuntary churners (cancel_requested_at IS NULL, term_ended_at <= 2026-06-30)
 # MAGIC -- would appear as label=0 despite having churned, contaminating the retained group.
-# MAGIC -- They are analyzed separately in EDA 03 (cancellation type).
+# MAGIC -- They are analyzed separately in EDA 03 (03_cancellation_types_eda.py).
 # MAGIC CREATE OR REPLACE TEMP VIEW labels_qualified AS
 # MAGIC SELECT l.*
 # MAGIC FROM ${eda.labels} l

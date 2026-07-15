@@ -330,7 +330,7 @@ for col, label in [
 # MAGIC %md ### A9. Static features: current plan type and acquisition channel
 # MAGIC
 # MAGIC Static features do not vary by week — temporal plots are not applicable.
-# MAGIC See EDA 03 (03_cancellation_feature_eda.py) for cancellation rate by:
+# MAGIC See EDA 03 (03_cancellation_types_eda.py) for cancellation rate by:
 # MAGIC   cadence, drug name, regimen, strength group, dose group, acquisition channel.
 # MAGIC
 # MAGIC Below: distributions across the snapshot dataset for reference.
