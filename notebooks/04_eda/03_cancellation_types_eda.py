@@ -114,7 +114,12 @@ import matplotlib.ticker as mtick
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC Verify the classification logic: are `involuntary_cancellation` terms truly ended due to delinquency?
+# MAGIC ### 1.1 Cancellation due to deliquency
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC Verify the classification logic: are `involuntary_cancellation` terms ended due to delinquency?
 # MAGIC
 # MAGIC Using `is_failed_payment_canceled` from the terms table.
 
@@ -127,6 +132,16 @@ import matplotlib.ticker as mtick
 # COMMAND ----------
 
 # MAGIC %sql
+# MAGIC SELECT
+# MAGIC     attempt_number,
+# MAGIC     attempts_remaining,
+# MAGIC     COUNT(DISTINCT c.subscription_id) AS n_subs
+# MAGIC FROM ${eda.charges} AS c
+# MAGIC JOIN subscription_terms_qualified_new_labeled q
+# MAGIC     ON c.subscription_id = q.subscription_id
+# MAGIC WHERE c.was_paid = FALSE
+# MAGIC GROUP BY 1, 2
+# MAGIC ORDER BY 1%sql
 # MAGIC SELECT
 # MAGIC     t.is_failed_payment_canceled,
 # MAGIC     t.termination_type,
@@ -141,21 +156,85 @@ import matplotlib.ticker as mtick
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC `is_failed_payment_canceled` only takes the values `false` and `null`. However, when it is `null`, the subscription terms often ended due to delinquency.
+# MAGIC `is_failed_payment_canceled` only takes the values `false` and `null`. However, when it is `null`, the subscription terms often ended due to delinquency. So when `is_failed_payment_canceled` = `null`, the subs is failed payment canceled.
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC Get number of charge attempts from charge table
 
 # COMMAND ----------
 
 # MAGIC %sql
 # MAGIC SELECT
-# MAGIC     q.cancellation_type,
+# MAGIC     attempt_number,
+# MAGIC     attempts_remaining,
+# MAGIC     COUNT(DISTINCT c.subscription_id) AS n_subs
+# MAGIC FROM ${eda.charges} AS c
+# MAGIC JOIN subscription_terms_qualified_new_labeled q
+# MAGIC     ON c.subscription_id = q.subscription_id
+# MAGIC WHERE c.was_paid = FALSE
+# MAGIC GROUP BY 1, 2
+# MAGIC ORDER BY 1
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC Max charge number is 8.
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT
 # MAGIC     t.is_failed_payment_canceled,
 # MAGIC     t.termination_type,
+# MAGIC     cancels.changed_by,
 # MAGIC     COUNT(DISTINCT t.subscription_id) AS n_subs
 # MAGIC FROM subscription_terms_qualified_new_labeled q
 # MAGIC JOIN ${eda.terms_b} t
 # MAGIC     ON q.subscription_term_id = t.subscription_term_id
+# MAGIC LEFT JOIN ${eda.events} AS cancels
+# MAGIC     ON q.subscription_id = cancels.subscription_id
+# MAGIC     AND cancels.event_name = 'canceled'
+# MAGIC WHERE q.subscription_id IN (
+# MAGIC     SELECT subscription_id
+# MAGIC     FROM ${eda.charges}
+# MAGIC     WHERE was_paid = FALSE
+# MAGIC       AND attempt_number = 8
+# MAGIC )
+# MAGIC and cancellation_type = 'involuntary_cancellation'
 # MAGIC GROUP BY 1, 2, 3
-# MAGIC ORDER BY 1, 4 DESC
+# MAGIC ORDER BY 4 DESC
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC  There are subscriptions whose charge attempts all fail (e.g. `attempt_number = 8` and `was_paid` is false). Nearly all map to `is_failed_payment_canceled is null` and are canceled by the system.
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC **Findings:** when `is_failed_payment_canceled is null`, the subscription is cancelled due to payment failure. `is_failed_payment_canceled is null` -> involuntary cacellation.
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### 1.2 Does involuntary cancellation all caused by payment failure?
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT
+# MAGIC     t.is_failed_payment_canceled,
+# MAGIC     COUNT(DISTINCT t.subscription_id) AS n_subs,
+# MAGIC     ROUND(COUNT(DISTINCT t.subscription_id) * 100.0
+# MAGIC           / SUM(COUNT(DISTINCT t.subscription_id)) OVER (), 1)          AS pct
+# MAGIC FROM subscription_terms_qualified_new_labeled q
+# MAGIC JOIN ${eda.terms_b} t
+# MAGIC     ON q.subscription_term_id = t.subscription_term_id
+# MAGIC WHERE q.cancellation_type = 'involuntary_cancellation'
+# MAGIC GROUP BY 1
+# MAGIC ORDER BY 2 DESC
 
 # COMMAND ----------
 
@@ -163,7 +242,9 @@ import matplotlib.ticker as mtick
 # MAGIC SELECT
 # MAGIC     t.is_failed_payment_canceled,
 # MAGIC     t.termination_type,
-# MAGIC     COUNT(DISTINCT t.subscription_id) AS n_subs
+# MAGIC     COUNT(DISTINCT t.subscription_id) AS n_subs,
+# MAGIC     ROUND(COUNT(DISTINCT t.subscription_id) * 100.0
+# MAGIC           / SUM(COUNT(DISTINCT t.subscription_id)) OVER (), 1)          AS pct
 # MAGIC FROM subscription_terms_qualified_new_labeled q
 # MAGIC JOIN ${eda.terms_b} t
 # MAGIC     ON q.subscription_term_id = t.subscription_term_id
@@ -174,7 +255,7 @@ import matplotlib.ticker as mtick
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC Most involuntary cancellations have `is_failed_payment_canceled` as `null`, while some have it as `false`. For those subscriptions, `termination_type` is mostly `UNKNOWN`.
+# MAGIC Most involuntary cancellations are failed payment canceled, while some are not. However, for those subscriptions, `termination_type` is mostly `UNKNOWN`.
 
 # COMMAND ----------
 
@@ -201,94 +282,15 @@ import matplotlib.ticker as mtick
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT
-# MAGIC     t.termination_type,
-# MAGIC     cancels.changed_by,
-# MAGIC     COUNT(DISTINCT t.subscription_id) AS n_subs
-# MAGIC FROM subscription_terms_qualified_new_labeled q
-# MAGIC JOIN ${eda.terms_b} t
-# MAGIC     ON q.subscription_term_id = t.subscription_term_id
-# MAGIC LEFT JOIN ${eda.events} AS cancels
-# MAGIC     ON q.subscription_id = cancels.subscription_id
-# MAGIC     AND cancels.event_name = 'canceled'
-# MAGIC WHERE q.cancellation_type = 'involuntary_cancellation'
-# MAGIC   AND t.is_failed_payment_canceled IS NULL
-# MAGIC GROUP BY 1, 2
-# MAGIC ORDER BY 3 DESC
+# MAGIC %md
+# MAGIC Most of them are cancelled by users, but the cancellation reason is unknown and there is no cancellation request date in the terms table.
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC Some rows classified as involuntary still show cancel-related events / actors — worth monitoring, but the label rule remains: no `cancel_requested_at` + term ended by cutoff.
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC SELECT
-# MAGIC     t.is_failed_payment_canceled,
-# MAGIC     t.cancel_requested_at IS NULL AS did_not_submit_cancel_request,
-# MAGIC     COUNT(DISTINCT t.subscription_id) AS n,
-# MAGIC     ROUND(
-# MAGIC         COUNT(*) * 100.0
-# MAGIC         / SUM(COUNT(*)) OVER (PARTITION BY t.is_failed_payment_canceled),
-# MAGIC         2
-# MAGIC     ) AS pct
-# MAGIC FROM subscription_terms_qualified_new_labeled q
-# MAGIC JOIN ${eda.terms_b} t
-# MAGIC     ON q.subscription_term_id = t.subscription_term_id
-# MAGIC WHERE t.term_started_at IS NOT NULL
-# MAGIC   AND t.term_ended_at IS NOT NULL
-# MAGIC GROUP BY 1, 2
-# MAGIC ORDER BY 1 DESC, 3 DESC
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC Most rows with `is_failed_payment_canceled = false` have a cancellation request, whereas most rows with `is_failed_payment_canceled` null/true do not.
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC SELECT
-# MAGIC     attempt_number,
-# MAGIC     attempts_remaining,
-# MAGIC     COUNT(DISTINCT c.subscription_id) AS n_subs
-# MAGIC FROM ${eda.charges} AS c
-# MAGIC JOIN subscription_terms_qualified_new_labeled q
-# MAGIC     ON c.subscription_id = q.subscription_id
-# MAGIC WHERE c.was_paid = FALSE
-# MAGIC GROUP BY 1, 2
-# MAGIC ORDER BY 1
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC SELECT
-# MAGIC     q.cancellation_type,
-# MAGIC     t.is_failed_payment_canceled,
-# MAGIC     t.termination_type,
-# MAGIC     cancels.changed_by,
-# MAGIC     COUNT(DISTINCT t.subscription_id) AS n_subs
-# MAGIC FROM subscription_terms_qualified_new_labeled q
-# MAGIC JOIN ${eda.terms_b} t
-# MAGIC     ON q.subscription_term_id = t.subscription_term_id
-# MAGIC LEFT JOIN ${eda.events} AS cancels
-# MAGIC     ON q.subscription_id = cancels.subscription_id
-# MAGIC     AND cancels.event_name = 'canceled'
-# MAGIC WHERE q.subscription_id IN (
-# MAGIC     SELECT subscription_id
-# MAGIC     FROM ${eda.charges}
-# MAGIC     WHERE was_paid = FALSE
-# MAGIC       AND attempt_number = 8
-# MAGIC )
-# MAGIC GROUP BY 1, 2, 3, 4
-# MAGIC ORDER BY 5 DESC
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC **Findings:** There are subscriptions whose charge attempts all fail (e.g. attempt_number = 8). Nearly all map to delinquency-driven involuntary cancellation.
+# MAGIC **Conclusions:** Exclude subscriptions that ended with no `cancel_requested_at` in the terms table, but have `is_failed_payment_canceled = FALSE`.
+# MAGIC
+# MAGIC These are not clean involuntary (delinquency) cases: the term ended without a cancel request, yet the payment-failure cancel flag is explicitly false, so they are ambiguous and should be left out of the voluntary / involuntary comparison.
 
 # COMMAND ----------
 
@@ -298,16 +300,100 @@ import matplotlib.ticker as mtick
 # COMMAND ----------
 
 # MAGIC %sql
+# MAGIC CREATE OR REPLACE TEMP VIEW subscription_terms_qualified_new_labeled_valid AS
+# MAGIC SELECT
+# MAGIC     l.*
+# MAGIC FROM subscription_terms_qualified_new_labeled as l
+# MAGIC join ${eda.terms_b} t
+# MAGIC     ON l.subscription_id = t.subscription_id
+# MAGIC -- Exclude ambiguous "cancelled by users but without cancel request" rows
+# MAGIC WHERE NOT (
+# MAGIC     t.cancel_requested_at IS NULL
+# MAGIC     AND t.term_ended_at IS NOT NULL
+# MAGIC     AND t.is_failed_payment_canceled IS FALSE
+# MAGIC )
+
+# COMMAND ----------
+
+# MAGIC %sql
 # MAGIC SELECT
 # MAGIC     q.cancellation_type,
 # MAGIC     pt.term_months                                              AS cadence,
+# MAGIC     COUNT(DISTINCT q.subscription_id)                          AS n,
+# MAGIC     ROUND(COUNT(DISTINCT q.subscription_id) * 100.0
+# MAGIC           / SUM(COUNT(DISTINCT q.subscription_id)) OVER (
+# MAGIC               PARTITION BY q.cancellation_type
+# MAGIC           ), 1) AS pct_within_type
+# MAGIC FROM subscription_terms_qualified_new_labeled_valid q
+# MAGIC JOIN ${eda.plan_terms} pt
+# MAGIC     ON q.subscription_term_id = pt.subscription_term_id
+# MAGIC    AND pt.is_latest_plan_term = TRUE
+# MAGIC GROUP BY 1, 2
+# MAGIC ORDER BY 1, 3 DESC
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT
+# MAGIC     q.cancellation_type,
 # MAGIC     pt.drug_name,
+# MAGIC     COUNT(DISTINCT q.subscription_id)                          AS n,
+# MAGIC     ROUND(COUNT(DISTINCT q.subscription_id) * 100.0
+# MAGIC           / SUM(COUNT(DISTINCT q.subscription_id)) OVER (
+# MAGIC               PARTITION BY q.cancellation_type
+# MAGIC           ), 1) AS pct_within_type
+# MAGIC FROM subscription_terms_qualified_new_labeled_valid q
+# MAGIC JOIN ${eda.plan_terms} pt
+# MAGIC     ON q.subscription_term_id = pt.subscription_term_id
+# MAGIC    AND pt.is_latest_plan_term = TRUE
+# MAGIC GROUP BY 1, 2
+# MAGIC ORDER BY 1, 3 DESC
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT
+# MAGIC     q.cancellation_type,
 # MAGIC     pt.regimen,
+# MAGIC     COUNT(DISTINCT q.subscription_id)                          AS n,
+# MAGIC     ROUND(COUNT(DISTINCT q.subscription_id) * 100.0
+# MAGIC           / SUM(COUNT(DISTINCT q.subscription_id)) OVER (
+# MAGIC               PARTITION BY q.cancellation_type
+# MAGIC           ), 1) AS pct_within_type
+# MAGIC FROM subscription_terms_qualified_new_labeled_valid q
+# MAGIC JOIN ${eda.plan_terms} pt
+# MAGIC     ON q.subscription_term_id = pt.subscription_term_id
+# MAGIC    AND pt.is_latest_plan_term = TRUE
+# MAGIC GROUP BY 1, 2
+# MAGIC ORDER BY 1, 3 DESC
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT
+# MAGIC     q.cancellation_type,
 # MAGIC     CASE
 # MAGIC         WHEN pt.drug_strength IN ('2.5mg','5mg')         THEN 'low (≤5mg)'
 # MAGIC         WHEN pt.drug_strength IN ('10mg','20mg','25mg')  THEN 'mid (10–25mg)'
 # MAGIC         WHEN pt.drug_strength IN ('50mg','100mg')        THEN 'high (≥50mg)'
 # MAGIC     END AS strength_group,
+# MAGIC     COUNT(DISTINCT q.subscription_id)                          AS n,
+# MAGIC     ROUND(COUNT(DISTINCT q.subscription_id) * 100.0
+# MAGIC           / SUM(COUNT(DISTINCT q.subscription_id)) OVER (
+# MAGIC               PARTITION BY q.cancellation_type
+# MAGIC           ), 1) AS pct_within_type
+# MAGIC FROM subscription_terms_qualified_new_labeled_valid q
+# MAGIC JOIN ${eda.plan_terms} pt
+# MAGIC     ON q.subscription_term_id = pt.subscription_term_id
+# MAGIC    AND pt.is_latest_plan_term = TRUE
+# MAGIC GROUP BY 1, 2
+# MAGIC ORDER BY 1, 3 DESC
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT
+# MAGIC     q.cancellation_type,
 # MAGIC     CASE
 # MAGIC         WHEN pt.monthly_dose <= 8  THEN 'low (≤8/mo)'
 # MAGIC         WHEN pt.monthly_dose <= 16 THEN 'mid (9–16/mo)'
@@ -318,17 +404,17 @@ import matplotlib.ticker as mtick
 # MAGIC           / SUM(COUNT(DISTINCT q.subscription_id)) OVER (
 # MAGIC               PARTITION BY q.cancellation_type
 # MAGIC           ), 1) AS pct_within_type
-# MAGIC FROM subscription_terms_qualified_new_labeled q
+# MAGIC FROM subscription_terms_qualified_new_labeled_valid q
 # MAGIC JOIN ${eda.plan_terms} pt
 # MAGIC     ON q.subscription_term_id = pt.subscription_term_id
 # MAGIC    AND pt.is_latest_plan_term = TRUE
-# MAGIC GROUP BY 1, 2, 3, 4, 5, 6
-# MAGIC ORDER BY 1, 7 DESC
+# MAGIC GROUP BY 1, 2
+# MAGIC ORDER BY 1, 3 DESC
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC **Findings:** []
+# MAGIC **Findings:** compared to voluntary cancellers, involuntary cancellers have shorter cadence (charged more frequently), higher dosage and strength (more expensive monthly)
 
 # COMMAND ----------
 
@@ -345,7 +431,7 @@ import matplotlib.ticker as mtick
 # MAGIC     ROUND(AVG(CASE WHEN inv.is_failed THEN 1.0 ELSE 0 END), 3)   AS avg_failure_rate,
 # MAGIC     ROUND(AVG(CASE WHEN inv.is_delinquent THEN 1.0 ELSE 0 END), 3) AS avg_delinquency_rate,
 # MAGIC     COUNT(DISTINCT q.subscription_id)                            AS n
-# MAGIC FROM subscription_terms_qualified_new_labeled q
+# MAGIC FROM subscription_terms_qualified_new_labeled_valid q
 # MAGIC JOIN ${eda.invoices} inv
 # MAGIC     ON q.subscription_term_id = inv.subscription_term_id
 # MAGIC GROUP BY 1
@@ -371,7 +457,7 @@ df4 = spark.sql(f"""
             t.term_started_at::date,
             COALESCE(t.cancel_requested_at::date, t.term_ended_at::date)
         ) AS days_to_cancellation
-    FROM subscription_terms_qualified_new_labeled q
+    FROM subscription_terms_qualified_new_labeled_valid q
     JOIN {TERMS_B} t ON q.subscription_term_id = t.subscription_term_id
     WHERE q.cancellation_type IN ('voluntary_cancellation', 'involuntary_cancellation')
 """).toPandas()
@@ -422,7 +508,7 @@ plt.show()
 # MAGIC     ROUND(COUNT(DISTINCT l.subscription_id) * 100.0
 # MAGIC           / SUM(COUNT(DISTINCT l.subscription_id)) OVER (), 1) AS pct
 # MAGIC FROM ${eda.labels} l
-# MAGIC JOIN subscription_terms_qualified_new_labeled q
+# MAGIC JOIN subscription_terms_qualified_new_labeled_valid q
 # MAGIC     ON l.subscription_term_id = q.subscription_term_id
 # MAGIC GROUP BY 1, 2
 # MAGIC ORDER BY 1, 2
